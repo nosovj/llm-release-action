@@ -45,6 +45,10 @@ inputs:
     description: 'Perform analysis without suggesting version'
     required: false
     default: 'false'
+  commits_json:
+    description: 'JSON array of commits for multi-repo analysis. Format: [{"hash": "abc123", "message": "feat: add feature", "repo": "frontend"}]. If provided, bypasses git commit detection.'
+    required: false
+    default: ''
 
 outputs:
   bump:
@@ -93,5 +97,6 @@ runs:
         INPUT_TIMEOUT: ${{ inputs.timeout }}
         INPUT_DEBUG: ${{ inputs.debug }}
         INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        INPUT_COMMITS_JSON: ${{ inputs.commits_json }}
       run: |
         python ${{ github.action_path }}/src/analyze.py

@@ -10,7 +10,7 @@ from typing import Optional
 import litellm
 
 from parser import parse_response
-from prompt_builder import build_prompt, get_commits
+from prompt_builder import build_prompt, get_commits, CommitInfo, has_breaking_change, sanitize_message
 from version import SemanticVersion, detect_latest_tag, is_shallow_clone, parse_version
 
 
@@ -188,6 +188,55 @@ def sanitize_changelog(changelog: str, max_size: int = 65536) -> str:
     return sanitized
 
 
+def parse_commits_json(commits_json: str) -> list[CommitInfo]:
+    """Parse commits from JSON format.
+
+    Args:
+        commits_json: JSON string containing array of commit objects
+
+    Returns:
+        List of CommitInfo objects
+
+    Raises:
+        ValueError: If JSON is invalid or malformed
+    """
+    try:
+        data = json.loads(commits_json)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid commits_json: {e}") from e
+
+    if not isinstance(data, list):
+        raise ValueError("commits_json must be a JSON array")
+
+    commits = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError(f"Each commit must be an object, got: {type(item)}")
+
+        commit_hash = item.get("hash", "")
+        message = item.get("message", "")
+        repo = item.get("repo", "")
+
+        if not commit_hash or not message:
+            raise ValueError(f"Commit missing required fields (hash, message): {item}")
+
+        # Prefix with repo name if provided
+        if repo:
+            display_hash = f"[{repo}] {commit_hash}"
+        else:
+            display_hash = commit_hash
+
+        commits.append(
+            CommitInfo(
+                hash=display_hash,
+                message=sanitize_message(message),
+                has_breaking_marker=has_breaking_change(message),
+            )
+        )
+
+    return commits
+
+
 def main() -> int:
     """Main entry point."""
     try:
@@ -202,52 +251,86 @@ def main() -> int:
         timeout = get_env_int("INPUT_TIMEOUT", 60)
         debug = get_env_bool("INPUT_DEBUG", False)
         dry_run = get_env_bool("INPUT_DRY_RUN", False)
+        commits_json = os.environ.get("INPUT_COMMITS_JSON", "")
 
-        log_group("Validating git environment")
+        # Check if using external commits (multi-repo mode)
+        use_external_commits = bool(commits_json.strip())
 
-        # Check for shallow clone
-        if is_shallow_clone():
-            log_error("Shallow clone detected. Use fetch-depth: 0 in your checkout action.")
-            return 1
+        if use_external_commits:
+            log_group("Parsing external commits (multi-repo mode)")
 
-        # Determine current version
-        if current_version_input:
+            # Parse external commits
+            commits = parse_commits_json(commits_json)
+            if not commits:
+                log_error("No commits found in commits_json")
+                return 1
+
+            print(f"Loaded {len(commits)} commits from external source")
+            log_group_end()
+
+            # For external commits, current_version is required
+            if not current_version_input:
+                log_error("current_version is required when using commits_json")
+                return 1
+
             current_version_str = current_version_input
+            current_version = parse_version(current_version_str)
             print(f"Using provided version: {current_version_str}")
         else:
-            detected = detect_latest_tag()
-            if not detected:
-                log_error("No semver tags found. Please provide current_version input.")
+            log_group("Validating git environment")
+
+            # Check for shallow clone
+            if is_shallow_clone():
+                log_error("Shallow clone detected. Use fetch-depth: 0 in your checkout action.")
                 return 1
-            current_version_str = detected
-            print(f"Auto-detected version: {current_version_str}")
 
-        # Parse version
-        current_version = parse_version(current_version_str)
-        log_group_end()
+            # Determine current version
+            if current_version_input:
+                current_version_str = current_version_input
+                print(f"Using provided version: {current_version_str}")
+            else:
+                detected = detect_latest_tag()
+                if not detected:
+                    log_error("No semver tags found. Please provide current_version input.")
+                    return 1
+                current_version_str = detected
+                print(f"Auto-detected version: {current_version_str}")
 
-        log_group("Fetching commits")
+            # Parse version
+            current_version = parse_version(current_version_str)
+            log_group_end()
 
-        # Get commits
-        commits = get_commits(current_version_str, head_ref)
-        if not commits:
-            log_error(f"No commits found between {current_version_str} and {head_ref}")
-            return 1
+            log_group("Fetching commits")
 
-        print(f"Found {len(commits)} commits")
-        log_group_end()
+            # Get commits
+            commits = get_commits(current_version_str, head_ref)
+            if not commits:
+                log_error(f"No commits found between {current_version_str} and {head_ref}")
+                return 1
+
+            print(f"Found {len(commits)} commits")
+            log_group_end()
 
         log_group("Building prompt")
 
         # Build prompt
-        diff_patterns = [p.strip() for p in include_diffs.split(",") if p.strip()]
+        # Skip diffs for external commits (no git context available)
+        if use_external_commits:
+            diff_patterns: list[str] = []
+            base_ref = ""
+            prompt_head_ref = ""
+        else:
+            diff_patterns = [p.strip() for p in include_diffs.split(",") if p.strip()]
+            base_ref = current_version_str
+            prompt_head_ref = head_ref
+
         prompt = build_prompt(
             commits=commits,
             base_version=str(current_version),
             max_commits=max_commits,
             diff_patterns=diff_patterns,
-            base_ref=current_version_str,
-            head_ref=head_ref,
+            base_ref=base_ref,
+            head_ref=prompt_head_ref,
         )
 
         print(f"Prompt built ({len(prompt)} chars)")

@@ -285,3 +285,95 @@ class TestPreReleaseVersioning:
         next_version = current.bump("major")
 
         assert str(next_version) == "v2.0.0"
+
+
+class TestParseCommitsJson:
+    """Tests for external commits JSON parsing (multi-repo mode)."""
+
+    def test_parse_basic_commits(self):
+        """Test parsing basic commit list."""
+        from analyze import parse_commits_json
+
+        json_str = '''[
+            {"hash": "abc1234", "message": "feat: add new feature"},
+            {"hash": "def5678", "message": "fix: resolve bug"}
+        ]'''
+
+        commits = parse_commits_json(json_str)
+
+        assert len(commits) == 2
+        assert commits[0].hash == "abc1234"
+        assert "add new feature" in commits[0].message
+        assert commits[1].hash == "def5678"
+
+    def test_parse_with_repo_prefix(self):
+        """Test parsing commits with repo field."""
+        from analyze import parse_commits_json
+
+        json_str = '''[
+            {"hash": "abc1234", "message": "feat: add login", "repo": "frontend"},
+            {"hash": "def5678", "message": "fix: api error", "repo": "backend"}
+        ]'''
+
+        commits = parse_commits_json(json_str)
+
+        assert len(commits) == 2
+        assert commits[0].hash == "[frontend] abc1234"
+        assert commits[1].hash == "[backend] def5678"
+
+    def test_parse_detects_breaking_changes(self):
+        """Test breaking change detection in JSON commits."""
+        from analyze import parse_commits_json
+
+        json_str = '''[
+            {"hash": "abc1234", "message": "feat!: breaking change here"},
+            {"hash": "def5678", "message": "fix: normal fix"}
+        ]'''
+
+        commits = parse_commits_json(json_str)
+
+        assert commits[0].has_breaking_marker is True
+        assert commits[1].has_breaking_marker is False
+
+    def test_parse_invalid_json(self):
+        """Test error on invalid JSON."""
+        from analyze import parse_commits_json
+
+        with pytest.raises(ValueError) as exc_info:
+            parse_commits_json("not valid json")
+
+        assert "Invalid commits_json" in str(exc_info.value)
+
+    def test_parse_not_array(self):
+        """Test error when JSON is not array."""
+        from analyze import parse_commits_json
+
+        with pytest.raises(ValueError) as exc_info:
+            parse_commits_json('{"hash": "abc"}')
+
+        assert "must be a JSON array" in str(exc_info.value)
+
+    def test_parse_missing_required_fields(self):
+        """Test error when commit missing required fields."""
+        from analyze import parse_commits_json
+
+        json_str = '[{"hash": "abc1234"}]'  # Missing message
+
+        with pytest.raises(ValueError) as exc_info:
+            parse_commits_json(json_str)
+
+        assert "missing required fields" in str(exc_info.value)
+
+    def test_parse_sanitizes_messages(self):
+        """Test that commit messages are sanitized."""
+        from analyze import parse_commits_json
+
+        json_str = '''[
+            {"hash": "abc1234", "message": "feat: add <script>bad</script> feature"}
+        ]'''
+
+        commits = parse_commits_json(json_str)
+
+        assert "<script>" not in commits[0].message
+        assert "add" in commits[0].message
+        assert "feature" in commits[0].message
