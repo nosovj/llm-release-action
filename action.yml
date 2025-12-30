@@ -1,0 +1,97 @@
+name: 'LLM Semantic Version'
+description: 'Analyze commits and suggest semantic version bumps using LLM via LiteLLM'
+author: 'Joe Nosov'
+
+branding:
+  icon: 'git-commit'
+  color: 'purple'
+
+inputs:
+  model:
+    description: 'LiteLLM model string (e.g., anthropic/claude-3-haiku-20240307)'
+    required: true
+  current_version:
+    description: 'Current version to compare from. Auto-detects from latest semver tag if not provided.'
+    required: false
+  head_ref:
+    description: 'Head ref to compare to'
+    required: false
+    default: 'HEAD'
+  include_diffs:
+    description: 'File patterns to include in diff analysis (comma-separated)'
+    required: false
+    default: '**/openapi*.yaml,**/migrations/**,**/*.proto'
+  max_commits:
+    description: 'Maximum recent commits to include in full'
+    required: false
+    default: '50'
+  temperature:
+    description: 'LLM temperature (0.0-2.0)'
+    required: false
+    default: '0.2'
+  max_tokens:
+    description: 'Maximum tokens in LLM response'
+    required: false
+    default: '2000'
+  timeout:
+    description: 'Request timeout in seconds'
+    required: false
+    default: '60'
+  debug:
+    description: 'Enable verbose debug logging'
+    required: false
+    default: 'false'
+  dry_run:
+    description: 'Perform analysis without suggesting version'
+    required: false
+    default: 'false'
+
+outputs:
+  bump:
+    description: 'Bump type (major, minor, patch)'
+    value: ${{ steps.analyze.outputs.bump }}
+  current_version:
+    description: 'The version compared from'
+    value: ${{ steps.analyze.outputs.current_version }}
+  next_version:
+    description: 'Calculated next semantic version'
+    value: ${{ steps.analyze.outputs.next_version }}
+  changelog:
+    description: 'Generated changelog markdown'
+    value: ${{ steps.analyze.outputs.changelog }}
+  breaking_changes:
+    description: 'JSON array of detected breaking changes'
+    value: ${{ steps.analyze.outputs.breaking_changes }}
+  reasoning:
+    description: 'LLM reasoning for the version suggestion'
+    value: ${{ steps.analyze.outputs.reasoning }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        pip install -r ${{ github.action_path }}/src/requirements.txt
+
+    - name: Run analysis
+      id: analyze
+      shell: bash
+      env:
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_CURRENT_VERSION: ${{ inputs.current_version }}
+        INPUT_HEAD_REF: ${{ inputs.head_ref }}
+        INPUT_INCLUDE_DIFFS: ${{ inputs.include_diffs }}
+        INPUT_MAX_COMMITS: ${{ inputs.max_commits }}
+        INPUT_TEMPERATURE: ${{ inputs.temperature }}
+        INPUT_MAX_TOKENS: ${{ inputs.max_tokens }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_DEBUG: ${{ inputs.debug }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        python ${{ github.action_path }}/src/analyze.py

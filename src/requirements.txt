@@ -1,0 +1,2 @@
+# LiteLLM for multi-provider LLM abstraction
+litellm==1.80.11
