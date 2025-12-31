@@ -1,9 +1,15 @@
-"""Build tiered prompts for LLM analysis."""
+"""Build tiered prompts for LLM analysis.
+
+This module provides git utilities and prompt building functions that use
+Jinja2 templates from the prompts module for flexible, conditional prompts.
+"""
 
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional
+
+from prompts import Phase1Config, render_phase1_prompt
 
 
 @dataclass
@@ -278,3 +284,86 @@ You MUST respond with these XML tags:
 """
 
     return f"{system}\n\n{metadata}\n{commit_section}\n{diff_section}"
+
+
+def build_semantic_analysis_prompt(
+    commits: List[CommitInfo],
+    base_version: str,
+    content_override: Optional[str] = None,
+    max_commits: int = 50,
+    diff_patterns: Optional[List[str]] = None,
+    base_ref: str = "",
+    head_ref: str = "HEAD",
+    detect_breaking: bool = True,
+    generate_changelog: bool = True,
+    include_commits: bool = True,
+) -> str:
+    """Build prompt for semantic analysis of changes using Jinja2 templates.
+
+    This prompt asks the LLM to:
+    1. Analyze changes SEMANTICALLY (no conventional commit prefixes required)
+    2. Categorize each change appropriately
+    3. Detect breaking changes from context (API removals, schema changes, behavior changes)
+    4. Group related commits into logical changes
+    5. Suggest version bump with conservative approach
+
+    The prompt adapts based on the number of commits:
+    - Small releases (<=30 commits): Full detail on everything
+    - Medium releases (<=100 commits): Detail on important, summarize rest
+    - Large releases (>100 commits): Focus on high-impact only
+
+    Args:
+        commits: List of commits to analyze (ignored if content_override provided)
+        base_version: Current version string
+        content_override: Optional text to analyze instead of commits (for multi-repo)
+        max_commits: Max commits to include in full detail
+        diff_patterns: File patterns for diff inclusion
+        base_ref: Base git ref for diffs
+        head_ref: Head git ref for diffs
+        detect_breaking: Include breaking change detection in prompt
+        generate_changelog: Include changelog generation in output
+        include_commits: Include commit SHA references in output
+
+    Returns:
+        Complete prompt string with XML-style delimiters
+    """
+    # Build input content section
+    if content_override:
+        input_content = content_override
+        commit_count = len(content_override.split("\n"))  # Rough estimate
+    else:
+        # Build commit list from CommitInfo objects
+        recent = commits[:max_commits]
+        older = commits[max_commits:]
+        commit_count = len(commits)
+
+        commit_lines = []
+        for commit in recent:
+            first_line = commit.message.split("\n")[0]
+            commit_lines.append(f"- {commit.hash}: {first_line}")
+
+        input_content = f"## Commits ({len(commits)} total)\n\n"
+        input_content += "\n".join(commit_lines)
+
+        if older:
+            input_content += f"\n\n... and {len(older)} additional commits"
+
+    # Build optional diff section
+    diff_content: Optional[str] = None
+    if diff_patterns and base_ref:
+        diff = get_file_diff(base_ref, head_ref, diff_patterns)
+        if diff:
+            diff_content = diff
+
+    # Use Jinja2 template for the prompt
+    config = Phase1Config(
+        base_version=base_version,
+        input_content=input_content,
+        commit_count=commit_count,
+        diff_content=diff_content,
+        detect_breaking=detect_breaking,
+        generate_changelog=generate_changelog,
+        include_commits=include_commits,
+    )
+
+    return render_phase1_prompt(config)

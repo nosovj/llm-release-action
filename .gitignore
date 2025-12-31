@@ -38,7 +38,11 @@ ENV/
 .coverage
 htmlcov/
 .tox/
+.deepeval/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# OpenSpec (local development only)
+openspec/

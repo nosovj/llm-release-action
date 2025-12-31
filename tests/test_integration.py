@@ -184,7 +184,7 @@ class TestLLMRetry:
 
         with patch("analyze.litellm.completion", mock_completion):
             with patch("analyze.time.sleep"):  # Skip actual sleep
-                result = call_llm_with_retry(
+                result, usage = call_llm_with_retry(
                     model="test/model",
                     prompt="test prompt",
                     temperature=0.2,
@@ -194,6 +194,7 @@ class TestLLMRetry:
 
         assert "<BUMP>patch</BUMP>" in result
         assert mock_completion.call_count == 2
+        assert usage.model == "test/model"
 
     def test_no_retry_on_auth_error(self):
         """Test immediate failure on auth error."""

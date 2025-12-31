@@ -1,2 +1,14 @@
 # LiteLLM for multi-provider LLM abstraction
 litellm==1.80.11
+
+# YAML/JSON config parsing
+pyyaml>=6.0
+
+# Language code validation (lightweight lookup tables)
+langcodes>=3.3.0
+
+# Language detection for output validation (optional)
+langdetect>=1.0.9
+
+# Templating for prompts
+Jinja2>=3.1.0
