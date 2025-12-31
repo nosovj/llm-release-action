@@ -54,11 +54,11 @@ inputs:
     required: false
     default: 'false'
   content_override:
-    description: 'Pre-formatted content for multi-repo analysis. If provided, bypasses git commit detection.'
+    description: 'Markdown content for multi-repo analysis (bypasses git). Format: ## Repo\n### Features\n- item. See README.'
     required: false
     default: ''
   changelog_config:
-    description: 'YAML/JSON configuration for multi-audience changelog generation. See README for format.'
+    description: 'YAML config for audiences. Format: {audience: {preset, languages, tone, ...}}. Presets: developer, customer, executive, marketing, security, ops. See README.'
     required: false
     default: ''
 
@@ -72,11 +72,8 @@ outputs:
   next_version:
     description: 'Calculated next semantic version'
     value: ${{ steps.analyze.outputs.next_version }}
-  changelog:
-    description: 'Generated changelog markdown (legacy single changelog)'
-    value: ${{ steps.analyze.outputs.changelog }}
   changelogs:
-    description: 'JSON object with changelogs per audience and language: {audience: {language: content}}'
+    description: 'JSON object with changelogs: {audience: {language: markdown}}. Default: {default: {en: "..."}}. See README for schema.'
     value: ${{ steps.analyze.outputs.changelogs }}
   metadata:
     description: 'JSON object with release metadata per audience and language: {audience: {language: {title, summary, highlights}}}'

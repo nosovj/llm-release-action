@@ -1,4 +1,4 @@
-# Basic release workflow using llm-semver-action
+# Basic release workflow using llm-release-action
 # Save this as .github/workflows/release.yml
 
 name: Release
@@ -17,18 +17,20 @@ jobs:
         with:
           fetch-depth: 0  # Required for full git history
 
-      - uses: nosovj/llm-semver-action@v1
-        id: semver
+      - uses: nosovj/llm-release-action@v1
+        id: release
         with:
-          model: anthropic/claude-3-haiku-20240307
+          model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.semver.outputs.next_version }}
-          name: ${{ steps.semver.outputs.next_version }}
-          body: ${{ steps.semver.outputs.changelog }}
-          draft: false
-          prerelease: false
+        run: |
+          CHANGELOG=$(echo '${{ steps.release.outputs.changelogs }}' | jq -r '.default.en')
+          gh release create ${{ steps.release.outputs.next_version }} \
+            --title "${{ steps.release.outputs.next_version }}" \
+            --notes "$CHANGELOG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

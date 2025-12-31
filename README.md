@@ -49,7 +49,9 @@ The action runs in two phases:
     AWS_REGION: us-east-1
 
 - name: Create GitHub Release
-  run: gh release create ${{ steps.release.outputs.next_version }} --notes "${{ steps.release.outputs.changelog }}"
+  run: |
+    CHANGELOG=$(echo '${{ steps.release.outputs.changelogs }}' | jq -r '.default.en')
+    gh release create ${{ steps.release.outputs.next_version }} --notes "$CHANGELOG"
   env:
     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -80,8 +82,7 @@ The action runs in two phases:
 | `bump` | `string` | Bump type: `major`, `minor`, or `patch` |
 | `current_version` | `string` | The version compared from (detected or provided) |
 | `next_version` | `string` | Calculated next semantic version (e.g., `v1.2.0`) |
-| `changelog` | `string` | Default markdown changelog (use when not using `changelog_config`) |
-| `changelogs` | `{audience: {lang: string}}` | Changelogs per audience and language (only when using `changelog_config`) |
+| `changelogs` | `{audience: {lang: string}}` | Changelogs per audience and language. Default: `{default: {en: "..."}}` |
 | `metadata` | `{audience: {lang: Metadata}}` | Release metadata (title, summary, highlights) per audience |
 | `changes` | `Change[]` | Structured changes with category, title, commits, authors, breaking info |
 | `stats` | `Stats` | Change counts by category and contributor count |

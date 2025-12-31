@@ -433,9 +433,14 @@ def run_phase2(
     metadata: Dict[str, Dict[str, dict]] = {}
 
     if not changelog_config.audiences:
-        print("No changelog_config provided, skipping Phase 2")
-        log_group_end()
-        return changelogs, metadata
+        # Create default audience when no config provided
+        print("No changelog_config provided, using default audience")
+        changelog_config = ChangelogConfig.from_yaml("""
+default:
+  preset: developer
+  languages: [en]
+""")
+
 
     # Build list of all tasks to run in parallel
     tasks: List[Tuple[str, str, AudienceConfig, List[Change], str]] = []
@@ -756,17 +761,7 @@ def main() -> int:
         set_output("next_version", str(next_version))
         set_output("reasoning", analysis_result.reasoning)
 
-        # Legacy changelog output (first audience, first language, or empty)
-        legacy_changelog = ""
-        if changelogs:
-            first_audience = next(iter(changelogs.keys()), None)
-            if first_audience:
-                first_lang = next(iter(changelogs[first_audience].keys()), None)
-                if first_lang:
-                    legacy_changelog = changelogs[first_audience][first_lang]
-        set_output("changelog", sanitize_changelog(legacy_changelog))
-
-        # New structured outputs
+        # Changelogs (always populated - uses default audience if no config)
         set_output("changelogs", json.dumps(changelogs))
         set_output("metadata", json.dumps(metadata))
 
