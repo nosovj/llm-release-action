@@ -4,13 +4,33 @@ A GitHub Action that uses LLM to analyze commits, suggest semantic version bumps
 
 ## Features
 
-- **Semantic Version Analysis**: Analyzes commit history to determine appropriate version bump (major, minor, patch)
-- **Multi-Audience Changelogs**: Generate changelogs for different audiences (developers, customers, executives) in multiple languages
-- **Parallel Execution**: Changelog transformations run in parallel for speed
-- **Usage Tracking**: Returns token counts and latency per model for cost monitoring
+### Semantic Version Analysis
+- Analyzes commit history to determine appropriate version bump (major, minor, patch)
+- Detects breaking changes from commit messages, conventional commit markers, and file diffs
+- Conservative versioning: only suggests major bumps when explicit evidence exists
+- Extracts structured change data with categories, importance, and user benefits
+
+### Multi-Audience Changelog Generation
+- **Multiple audiences**: Generate different changelogs for developers, customers, executives, marketing, security, ops
+- **Multiple languages**: Translate changelogs to any language (en, es, ja, de, fr, zh, etc.)
+- **Customizable tone**: formal, casual, professional, excited, friendly
+- **Flexible sections**: breaking, security, features, improvements, fixes, performance, deprecations, infrastructure, docs
+- **Content filtering**: exclude categories, patterns, labels, or authors per audience
+- **Metadata generation**: auto-generate release titles, summaries, and highlights
+- **Parallel execution**: all changelog transformations run concurrently for speed
+
+### Additional Features
 - **Multiple LLM Providers**: Supports any provider via [LiteLLM](https://github.com/BerriAI/litellm) (Anthropic, OpenAI, AWS Bedrock, etc.)
-- **Breaking Change Detection**: Detects breaking changes from commit messages and file diffs
-- **Conservative Versioning**: Only suggests major bumps when explicit evidence exists
+- **Usage Tracking**: Returns token counts and latency per model for cost monitoring
+- **Multi-repo support**: Combine changelogs from multiple repositories into unified release notes
+
+## How It Works
+
+The action runs in two phases:
+
+1. **Phase 1 - Semantic Analysis**: Analyzes commits and diffs to extract structured changes with categories, importance levels, user benefits, and technical details. Determines the appropriate version bump.
+
+2. **Phase 2 - Changelog Generation**: Transforms the structured changes into audience-specific changelogs. Each audience/language combination runs in parallel. Applies filtering, tone, formatting, and translation.
 
 ## Quick Start
 
