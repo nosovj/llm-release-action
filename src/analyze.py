@@ -443,7 +443,7 @@ default:
 
 
     # Build list of all tasks to run in parallel
-    tasks: List[Tuple[str, str, AudienceConfig, List[Change], str]] = []
+    tasks: List[Tuple[str, str, AudienceConfig, List[Change], str, Optional[str]]] = []
 
     for audience_name, config in changelog_config.audiences.items():
         changelogs[audience_name] = {}
@@ -454,15 +454,15 @@ default:
         print(f"Audience '{audience_name}': {len(filtered_changes)} changes, languages: {config.languages}")
 
         for language in config.languages:
-            tasks.append((audience_name, language, config, filtered_changes, version))
+            tasks.append((audience_name, language, config, filtered_changes, version, base_url))
 
     if not tasks:
         log_group_end()
         return changelogs, metadata
 
-    def process_task(task: Tuple[str, str, AudienceConfig, List[Change], str]) -> Tuple[str, str, str, dict]:
+    def process_task(task: Tuple[str, str, AudienceConfig, List[Change], str, Optional[str]]) -> Tuple[str, str, str, dict]:
         """Process a single audience/language task."""
-        audience_name, language, config, filtered_changes, ver = task
+        audience_name, language, config, filtered_changes, ver, task_base_url = task
 
         # Build prompt for this audience/language
         prompt = build_changelog_prompt(
@@ -470,6 +470,7 @@ default:
             config=config,
             version=ver,
             language=language,
+            base_url=task_base_url,
         )
 
         # Call LLM
