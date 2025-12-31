@@ -72,8 +72,8 @@ The action runs in two phases:
 | `timeout` | No | `120` | Request timeout in seconds |
 | `debug` | No | `false` | Enable verbose debug logging |
 | `dry_run` | No | `false` | Perform analysis without suggesting version |
-| `content_override` | No | - | Pre-formatted content for multi-repo analysis (bypasses git) |
-| `changelog_config` | No | - | YAML config for multi-audience changelog generation |
+| `content_override` | No | - | Pre-formatted content for multi-repo analysis. See [Content Override](#content-override-multi-repo-analysis) |
+| `changelog_config` | No | - | YAML config for audiences. See [Changelog Config Schema](#changelog-config-schema) |
 
 ## Outputs
 
@@ -82,13 +82,13 @@ The action runs in two phases:
 | `bump` | `string` | Bump type: `major`, `minor`, or `patch` |
 | `current_version` | `string` | The version compared from (detected or provided) |
 | `next_version` | `string` | Calculated next semantic version (e.g., `v1.2.0`) |
-| `changelogs` | `{audience: {lang: string}}` | Changelogs per audience and language. Default: `{default: {en: "..."}}` |
-| `metadata` | `{audience: {lang: Metadata}}` | Release metadata (title, summary, highlights) per audience |
+| `changelogs` | `{[audience]: {[lang]: string}}` | Changelogs per audience and language. Default: `{"default": {"en": "..."}}` |
+| `metadata` | `{[audience]: {[lang]: Metadata}}` | Release metadata (title, summary, highlights) per audience |
 | `changes` | `Change[]` | Structured changes with category, title, commits, authors, breaking info |
 | `stats` | `Stats` | Change counts by category and contributor count |
 | `breaking_changes` | `BreakingChange[]` | Extracted breaking changes with severity and migration steps |
 | `reasoning` | `string` | LLM explanation for the version suggestion |
-| `usage` | `{model: UsageStats}` | Token counts and latency per model |
+| `usage` | `{[model]: UsageStats}` | Token counts and latency per model |
 
 See [Output Schemas](#output-schemas) below for full type definitions and examples.
 
@@ -96,7 +96,15 @@ See [Output Schemas](#output-schemas) below for full type definitions and exampl
 
 #### `changelogs`
 
-Nested object: `{[audience: string]: {[language: string]: string}}`
+```typescript
+type Changelogs = {
+  [audience: string]: {
+    [language: string]: string  // Markdown content
+  }
+}
+```
+
+Default (no `changelog_config`): `{"default": {"en": "..."}}`
 
 ```json
 {
@@ -112,9 +120,13 @@ Nested object: `{[audience: string]: {[language: string]: string}}`
 
 #### `metadata`
 
-Nested object: `{[audience: string]: {[language: string]: Metadata}}`
-
 ```typescript
+type MetadataOutput = {
+  [audience: string]: {
+    [language: string]: Metadata
+  }
+}
+
 interface Metadata {
   title: string | null;    // Generated release title (if generate_title: true)
   summary: string | null;  // 1-2 sentence summary (if generate_summary: true)
@@ -270,10 +282,8 @@ interface BreakingChange {
 
 #### `usage`
 
-LLM usage statistics per model:
-
 ```typescript
-interface Usage {
+type Usage = {
   [model: string]: {
     calls: number;         // Number of LLM calls
     input_tokens: number;  // Total input tokens
