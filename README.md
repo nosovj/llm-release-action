@@ -65,23 +65,26 @@ The action runs in two phases:
 
 ## Outputs
 
-| Output | Description |
-|--------|-------------|
-| `bump` | Bump type: `major`, `minor`, or `patch` |
-| `current_version` | The version compared from (detected or provided) |
-| `next_version` | Calculated next semantic version |
-| `changelog` | Generated markdown changelog (legacy single changelog) |
-| `changelogs` | JSON object with changelogs per audience/language |
-| `metadata` | JSON object with release metadata per audience/language |
-| `changes` | JSON array of structured changes from analysis |
-| `stats` | JSON object with change statistics |
-| `breaking_changes` | JSON array of detected breaking changes |
-| `reasoning` | LLM explanation for the version suggestion |
-| `usage` | JSON object with LLM usage stats per model |
+| Output | Type | Description |
+|--------|------|-------------|
+| `bump` | `string` | Bump type: `major`, `minor`, or `patch` |
+| `current_version` | `string` | The version compared from (detected or provided) |
+| `next_version` | `string` | Calculated next semantic version (e.g., `v1.2.0`) |
+| `changelog` | `string` | Generated markdown changelog (legacy single changelog) |
+| `changelogs` | `{audience: {lang: string}}` | Changelogs per audience and language. See [schema](#changelogs) |
+| `metadata` | `{audience: {lang: Metadata}}` | Release metadata (title, summary, highlights) per audience. See [schema](#metadata) |
+| `changes` | `Change[]` | Structured changes with category, title, commits, authors, breaking info. See [schema](#changes) |
+| `stats` | `Stats` | Change counts by category and contributor count. See [schema](#stats) |
+| `breaking_changes` | `BreakingChange[]` | Extracted breaking changes with severity and migration steps. See [schema](#breaking_changes) |
+| `reasoning` | `string` | LLM explanation for the version suggestion |
+| `usage` | `{model: UsageStats}` | Token counts and latency per model. See [schema](#usage) |
 
-### Output Examples
+### Output Schemas
 
 #### `changelogs`
+
+Nested object: `{[audience: string]: {[language: string]: string}}`
+
 ```json
 {
   "customer": {
@@ -95,6 +98,17 @@ The action runs in two phases:
 ```
 
 #### `metadata`
+
+Nested object: `{[audience: string]: {[language: string]: Metadata}}`
+
+```typescript
+interface Metadata {
+  title: string | null;    // Generated release title (if generate_title: true)
+  summary: string | null;  // 1-2 sentence summary (if generate_summary: true)
+  highlights: string[];    // Key highlights (if generate_highlights > 0)
+}
+```
+
 ```json
 {
   "customer": {
@@ -108,6 +122,38 @@ The action runs in two phases:
 ```
 
 #### `changes`
+
+Array of structured changes from Phase 1 analysis:
+
+```typescript
+interface Change {
+  id: string;                        // Unique identifier
+  category: Category;                // See categories below
+  title: string;                     // Short description
+  description: string;               // Detailed description
+  commits: string[];                 // Associated commit hashes
+  authors: string[];                 // Contributors
+  importance: "high" | "medium" | "low";
+  user_benefit: string | null;       // What users gain
+  technical_detail: string | null;   // Implementation details
+  breaking: BreakingInfo | null;     // Breaking change details
+  labels: string[];                  // Associated labels
+  source: string | null;             // Source repo (multi-repo mode)
+  pr_number: number | null;          // Pull request number
+  issue_numbers: number[];           // Related issues
+}
+
+type Category = "breaking" | "security" | "feature" | "improvement"
+              | "fix" | "performance" | "deprecation"
+              | "infrastructure" | "docs" | "other";
+
+interface BreakingInfo {
+  severity: "high" | "medium" | "low";
+  affected: string;                  // What is affected
+  migration: string[];               // Migration steps
+}
+```
+
 ```json
 [
   {
@@ -120,24 +166,55 @@ The action runs in two phases:
     "importance": "high",
     "user_benefit": "Reduced eye strain during nighttime use",
     "technical_detail": "Implemented via CSS variables with system preference detection",
+    "breaking": null,
     "labels": ["ui", "accessibility"],
-    "pr_number": 123
+    "source": null,
+    "pr_number": 123,
+    "issue_numbers": [100, 101]
   },
   {
     "id": "change-2",
     "category": "breaking",
     "title": "Remove deprecated API v1 endpoints",
     "description": "All /api/v1/* endpoints have been removed",
+    "commits": ["ghi9012"],
+    "authors": ["charlie"],
+    "importance": "high",
+    "user_benefit": null,
+    "technical_detail": null,
     "breaking": {
       "severity": "high",
       "affected": "API consumers using v1 endpoints",
       "migration": ["Update base URL from /api/v1 to /api/v2", "Update auth header format"]
-    }
+    },
+    "labels": ["api"],
+    "source": null,
+    "pr_number": 456,
+    "issue_numbers": []
   }
 ]
 ```
 
 #### `stats`
+
+Counts of changes by category:
+
+```typescript
+interface Stats {
+  features: number;
+  fixes: number;
+  improvements: number;
+  breaking: number;
+  security: number;
+  performance: number;
+  deprecations: number;
+  infrastructure: number;
+  docs: number;
+  other: number;
+  contributors: number;  // Unique authors count
+}
+```
+
 ```json
 {
   "features": 5,
@@ -155,6 +232,18 @@ The action runs in two phases:
 ```
 
 #### `breaking_changes`
+
+Extracted breaking changes for easy access:
+
+```typescript
+interface BreakingChange {
+  title: string;
+  severity: "high" | "medium" | "low";
+  affected: string;
+  migration: string[];
+}
+```
+
 ```json
 [
   {
@@ -167,6 +256,20 @@ The action runs in two phases:
 ```
 
 #### `usage`
+
+LLM usage statistics per model:
+
+```typescript
+interface Usage {
+  [model: string]: {
+    calls: number;         // Number of LLM calls
+    input_tokens: number;  // Total input tokens
+    output_tokens: number; // Total output tokens
+    latency_ms: number;    // Total latency in milliseconds
+  }
+}
+```
+
 ```json
 {
   "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0": {
