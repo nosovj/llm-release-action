@@ -22,7 +22,7 @@ A GitHub Action that uses LLM to analyze commits, suggest semantic version bumps
 ### Additional Features
 - **Multiple LLM Providers**: Supports any provider via [LiteLLM](https://github.com/BerriAI/litellm) (Anthropic, OpenAI, AWS Bedrock, etc.)
 - **Usage Tracking**: Returns token counts and latency per model for cost monitoring
-- **Multi-repo support**: Combine changelogs from multiple repositories into unified release notes
+- **Multi-repo support**: Combine changelogs from multiple repositories into a single product release
 
 ## How It Works
 
@@ -539,7 +539,7 @@ Content should be structured markdown with clear sections:
 ### Multi-Repo Workflow Example
 
 ```yaml
-name: Unified Release
+name: Product Release
 on:
   workflow_dispatch:
     inputs:
@@ -598,7 +598,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: us-east-1
 
-      - name: Create Unified Release
+      - name: Create Product Release
         run: |
           echo "Version: ${{ steps.release.outputs.next_version }}"
           echo "Customer changelog:"
