@@ -418,61 +418,67 @@ changelog_config: |
 
 ### Full Schema Reference
 
-```yaml
-<audience_name>:
-  # Base settings
-  preset: developer|customer|executive|marketing|security|ops  # Optional, provides defaults
-  languages: [en, es, ja, ...]  # ISO 639-1 codes, default: [en]
+```typescript
+// Top level: map of audience name to config
+type ChangelogConfig = {
+  [audienceName: string]: AudienceConfig
+}
 
-  # Sections to include (in order)
-  sections:
-    - breaking      # Breaking changes
-    - security      # Security patches
-    - features      # New features
-    - improvements  # Enhancements
-    - fixes         # Bug fixes
-    - performance   # Performance improvements
-    - deprecations  # Deprecated features
-    - infrastructure # CI/CD, build, deps
-    - docs          # Documentation
-    - other         # Everything else
+interface AudienceConfig {
+  // Use a preset as base (all fields below become optional overrides)
+  preset?: "developer" | "customer" | "executive" | "marketing" | "security" | "ops";
 
-  # Content options
-  include_commits: false       # Include commit hashes
-  include_contributors: false  # List authors
-  include_infrastructure: true # Include infra changes
-  group_related: true          # Group related changes
-  benefit_focused: false       # Focus on user benefits vs technical
-  summary_only: false          # Brief summary instead of full list
+  // Languages to generate (ISO 639-1 codes)
+  languages?: string[];  // default: ["en"]
 
-  # Filtering
-  exclude_categories: []       # Categories to hide: [infrastructure, docs, other]
-  exclude_patterns: []         # Regex patterns to exclude
-  exclude_labels: []           # Labels to exclude
-  exclude_authors: []          # Authors to exclude
-  max_items_per_section: null  # Limit items per section
+  // Sections to include, in display order
+  sections?: Section[];  // default: all sections
 
-  # Style
-  emojis: false                # Include emojis in output
-  tone: professional           # formal|casual|professional|excited|friendly
+  // Content options
+  include_commits?: boolean;       // Show commit hashes, default: false
+  include_contributors?: boolean;  // List authors, default: false
+  include_infrastructure?: boolean;// Include infra changes, default: true
+  group_related?: boolean;         // Group related changes, default: true
+  benefit_focused?: boolean;       // User benefits vs technical details, default: false
+  summary_only?: boolean;          // Brief summary instead of full list, default: false
 
-  # Breaking changes
-  breaking_highlight: true     # Highlight breaking changes
-  breaking_migration: true     # Include migration steps
-  breaking_severity: true      # Show severity level
+  // Filtering
+  exclude_categories?: Category[]; // Hide these categories
+  exclude_patterns?: string[];     // Regex patterns to exclude from titles
+  exclude_labels?: string[];       // Exclude changes with these labels
+  exclude_authors?: string[];      // Exclude changes by these authors
+  max_items_per_section?: number;  // Limit items per section (e.g., 5)
 
-  # Links (requires repo URL detection)
-  link_commits: false          # Link to commit URLs
-  link_prs: false              # Link to PR URLs
-  link_issues: false           # Link to issue URLs
+  // Style
+  emojis?: boolean;                // Include emojis, default: false
+  tone?: "formal" | "casual" | "professional" | "excited" | "friendly";
 
-  # Metadata generation
-  generate_title: false        # Generate release title
-  generate_summary: false      # Generate 1-2 sentence summary
-  generate_highlights: 0       # Number of highlights to generate
+  // Breaking change display
+  breaking_highlight?: boolean;    // Highlight breaking changes, default: true
+  breaking_migration?: boolean;    // Include migration steps, default: true
+  breaking_severity?: boolean;     // Show severity level, default: true
 
-  # Output format
-  output_format: markdown      # markdown|html|json|plain
+  // Links (auto-detects repo URL from git remote)
+  link_commits?: boolean;          // Link commit hashes to URLs
+  link_prs?: boolean;              // Link PR numbers to URLs
+  link_issues?: boolean;           // Link issue numbers to URLs
+
+  // Metadata generation (adds to metadata output)
+  generate_title?: boolean;        // Generate release title
+  generate_summary?: boolean;      // Generate 1-2 sentence summary
+  generate_highlights?: number;    // Number of key highlights (e.g., 3)
+
+  // Output format
+  output_format?: "markdown" | "html" | "json" | "plain";
+}
+
+type Section = "breaking" | "security" | "features" | "improvements"
+             | "fixes" | "performance" | "deprecations"
+             | "infrastructure" | "docs" | "other";
+
+type Category = "breaking" | "security" | "feature" | "improvement"
+              | "fix" | "performance" | "deprecation"
+              | "infrastructure" | "docs" | "other";
 ```
 
 ### Custom Audience Example
