@@ -51,16 +51,102 @@ A GitHub Action that uses LLM to analyze commits, suggest semantic version bumps
 | `current_version` | The version compared from (detected or provided) |
 | `next_version` | Calculated next semantic version |
 | `changelog` | Generated markdown changelog (legacy single changelog) |
-| `changelogs` | JSON object with changelogs per audience/language: `{audience: {language: content}}` |
+| `changelogs` | JSON object with changelogs per audience/language |
 | `metadata` | JSON object with release metadata per audience/language |
 | `changes` | JSON array of structured changes from analysis |
-| `stats` | JSON object with change statistics: `{features, fixes, breaking, ...}` |
+| `stats` | JSON object with change statistics |
 | `breaking_changes` | JSON array of detected breaking changes |
 | `reasoning` | LLM explanation for the version suggestion |
-| `usage` | JSON object with LLM usage stats per model (tokens, latency) |
+| `usage` | JSON object with LLM usage stats per model |
 
-### Usage Output Example
+### Output Examples
 
+#### `changelogs`
+```json
+{
+  "customer": {
+    "en": "## What's New\n\n### ✨ Features\n- **Dark Mode** - Easier on the eyes...",
+    "es": "## Novedades\n\n### ✨ Características\n- **Modo Oscuro** - Más fácil para los ojos..."
+  },
+  "developer": {
+    "en": "## Changelog\n\n### Breaking Changes\n- Removed deprecated `/api/v1` endpoints..."
+  }
+}
+```
+
+#### `metadata`
+```json
+{
+  "customer": {
+    "en": {
+      "title": "February Release: Dark Mode & Performance",
+      "summary": "This release brings the long-awaited dark mode and 2x faster load times.",
+      "highlights": ["Dark mode support", "50% faster page loads", "New dashboard widgets"]
+    }
+  }
+}
+```
+
+#### `changes`
+```json
+[
+  {
+    "id": "change-1",
+    "category": "feature",
+    "title": "Add dark mode support",
+    "description": "Users can now toggle between light and dark themes",
+    "commits": ["abc1234", "def5678"],
+    "authors": ["alice", "bob"],
+    "importance": "high",
+    "user_benefit": "Reduced eye strain during nighttime use",
+    "technical_detail": "Implemented via CSS variables with system preference detection",
+    "labels": ["ui", "accessibility"],
+    "pr_number": 123
+  },
+  {
+    "id": "change-2",
+    "category": "breaking",
+    "title": "Remove deprecated API v1 endpoints",
+    "description": "All /api/v1/* endpoints have been removed",
+    "breaking": {
+      "severity": "high",
+      "affected": "API consumers using v1 endpoints",
+      "migration": ["Update base URL from /api/v1 to /api/v2", "Update auth header format"]
+    }
+  }
+]
+```
+
+#### `stats`
+```json
+{
+  "features": 5,
+  "fixes": 12,
+  "improvements": 3,
+  "breaking": 1,
+  "security": 0,
+  "performance": 2,
+  "deprecations": 1,
+  "infrastructure": 4,
+  "docs": 2,
+  "other": 0,
+  "contributors": 8
+}
+```
+
+#### `breaking_changes`
+```json
+[
+  {
+    "title": "Remove deprecated API v1 endpoints",
+    "severity": "high",
+    "affected": "API consumers using v1 endpoints",
+    "migration": ["Update base URL from /api/v1 to /api/v2", "Update auth header format"]
+  }
+]
+```
+
+#### `usage`
 ```json
 {
   "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -115,23 +201,17 @@ Generate different changelogs for different audiences:
   with:
     model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
     changelog_config: |
-      audiences:
-        developer:
-          description: "Technical users who need API details"
-          tone: professional
-          languages: [en]
-        customer:
-          description: "End users who care about benefits"
-          tone: friendly
-          benefit_focused: true
-          use_emojis: true
-          languages: [en, es, ja]
-        executive:
-          description: "Business stakeholders"
-          tone: formal
-          summary_only: true
-          max_items: 5
-          languages: [en]
+      developer:
+        preset: developer
+        languages: [en]
+      customer:
+        preset: customer
+        emojis: true
+        languages: [en, es, ja]
+      executive:
+        preset: executive
+        max_items_per_section: 5
+        languages: [en]
   env:
     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -186,6 +266,228 @@ Use a smarter model for analysis, faster model for changelogs:
   run: |
     echo "LLM Usage: ${{ steps.release.outputs.usage }}"
 ```
+
+## Changelog Config Schema
+
+The `changelog_config` input accepts YAML defining one or more audiences. Each audience key becomes a key in the `changelogs` output.
+
+### Using Presets
+
+Presets provide sensible defaults for common audiences:
+
+| Preset | Description | Default Sections | Tone |
+|--------|-------------|------------------|------|
+| `developer` | Full technical changelog with commits, PRs, contributors | All sections | professional |
+| `customer` | User-facing changes with benefits focus | breaking, features, improvements, fixes | friendly |
+| `executive` | High-level business summary | breaking, features | formal |
+| `marketing` | Promotional feature announcements | features, improvements | excited |
+| `security` | Security-focused with CVE details | security, breaking, fixes | formal |
+| `ops` | Operations/DevOps focused | breaking, infrastructure, performance, security | professional |
+
+```yaml
+changelog_config: |
+  developer:
+    preset: developer
+  customer:
+    preset: customer
+    languages: [en, es, fr]
+```
+
+### Full Schema Reference
+
+```yaml
+<audience_name>:
+  # Base settings
+  preset: developer|customer|executive|marketing|security|ops  # Optional, provides defaults
+  languages: [en, es, ja, ...]  # ISO 639-1 codes, default: [en]
+
+  # Sections to include (in order)
+  sections:
+    - breaking      # Breaking changes
+    - security      # Security patches
+    - features      # New features
+    - improvements  # Enhancements
+    - fixes         # Bug fixes
+    - performance   # Performance improvements
+    - deprecations  # Deprecated features
+    - infrastructure # CI/CD, build, deps
+    - docs          # Documentation
+    - other         # Everything else
+
+  # Content options
+  include_commits: false       # Include commit hashes
+  include_contributors: false  # List authors
+  include_infrastructure: true # Include infra changes
+  group_related: true          # Group related changes
+  benefit_focused: false       # Focus on user benefits vs technical
+  summary_only: false          # Brief summary instead of full list
+
+  # Filtering
+  exclude_categories: []       # Categories to hide: [infrastructure, docs, other]
+  exclude_patterns: []         # Regex patterns to exclude
+  exclude_labels: []           # Labels to exclude
+  exclude_authors: []          # Authors to exclude
+  max_items_per_section: null  # Limit items per section
+
+  # Style
+  emojis: false                # Include emojis in output
+  tone: professional           # formal|casual|professional|excited|friendly
+
+  # Breaking changes
+  breaking_highlight: true     # Highlight breaking changes
+  breaking_migration: true     # Include migration steps
+  breaking_severity: true      # Show severity level
+
+  # Links (requires repo URL detection)
+  link_commits: false          # Link to commit URLs
+  link_prs: false              # Link to PR URLs
+  link_issues: false           # Link to issue URLs
+
+  # Metadata generation
+  generate_title: false        # Generate release title
+  generate_summary: false      # Generate 1-2 sentence summary
+  generate_highlights: 0       # Number of highlights to generate
+
+  # Output format
+  output_format: markdown      # markdown|html|json|plain
+```
+
+### Custom Audience Example
+
+```yaml
+changelog_config: |
+  api-consumers:
+    languages: [en]
+    sections: [breaking, features, deprecations]
+    tone: formal
+    include_commits: true
+    link_commits: true
+    breaking_migration: true
+    emojis: false
+
+  internal-devs:
+    preset: developer
+    include_infrastructure: true
+
+  release-notes:
+    preset: customer
+    generate_title: true
+    generate_summary: true
+    generate_highlights: 3
+    languages: [en, es, de, ja, zh]
+```
+
+## Content Override (Multi-Repo Analysis)
+
+The `content_override` input bypasses git commit detection and accepts pre-formatted changelog content. This is useful for:
+
+- **Monorepo releases**: Aggregate changes from multiple packages
+- **Multi-repo products**: Combine changelogs from frontend, backend, mobile repos
+- **External sources**: Process changes from external systems (Jira, Linear, etc.)
+
+### Format
+
+Content should be structured markdown with clear sections:
+
+```markdown
+## Frontend (v2.1.0)
+### Features
+- New dashboard with real-time analytics
+- Dark mode support
+
+### Fixes
+- Fixed login redirect on Safari
+
+## Backend (v3.0.0)
+### Breaking Changes
+- Removed deprecated /api/v1 endpoints
+- Changed auth token format (migration guide: docs/auth-migration.md)
+
+### Features
+- Added GraphQL subscriptions
+- New rate limiting with Redis
+
+## Mobile (v1.5.0)
+### Features
+- Push notification preferences
+- Offline mode improvements
+```
+
+### Multi-Repo Workflow Example
+
+```yaml
+name: Unified Release
+on:
+  workflow_dispatch:
+    inputs:
+      frontend_version:
+        description: 'Frontend version'
+        required: true
+      backend_version:
+        description: 'Backend version'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # Fetch changelogs from each repo
+      - name: Get Frontend Changelog
+        id: frontend
+        run: |
+          CHANGELOG=$(gh api repos/myorg/frontend/releases/tags/${{ inputs.frontend_version }} --jq '.body')
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get Backend Changelog
+        id: backend
+        run: |
+          CHANGELOG=$(gh api repos/myorg/backend/releases/tags/${{ inputs.backend_version }} --jq '.body')
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Analyze combined changes
+      - uses: nosovj/llm-release-action@v1
+        id: release
+        with:
+          model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+          current_version: v2024.12.0
+          content_override: |
+            ## Frontend ${{ inputs.frontend_version }}
+            ${{ steps.frontend.outputs.changelog }}
+
+            ## Backend ${{ inputs.backend_version }}
+            ${{ steps.backend.outputs.changelog }}
+          changelog_config: |
+            customer:
+              preset: customer
+              languages: [en, es]
+            internal:
+              preset: developer
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+
+      - name: Create Unified Release
+        run: |
+          echo "Version: ${{ steps.release.outputs.next_version }}"
+          echo "Customer changelog:"
+          echo '${{ steps.release.outputs.changelogs }}' | jq -r '.customer.en'
+```
+
+### Security Notes for content_override
+
+- Content is scanned for injection patterns (role hijacking, instruction injection)
+- Content is truncated if it exceeds token limits (~8000 tokens)
+- Suspicious patterns trigger warnings but don't block execution
+- Critical threats (>500KB content) are rejected
 
 ## Versioning Rules
 
