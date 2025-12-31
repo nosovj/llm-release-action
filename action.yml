@@ -1,5 +1,5 @@
-name: 'LLM Semantic Version'
-description: 'Analyze commits and suggest semantic version bumps using LLM via LiteLLM. Supports multi-audience changelogs.'
+name: 'LLM Release Action'
+description: 'Analyze commits, suggest semantic version bumps, and generate multi-audience changelogs using LLM via LiteLLM.'
 author: 'Joe Nosov'
 
 branding:
