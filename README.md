@@ -35,13 +35,23 @@ The action runs in two phases:
 ## Quick Start
 
 ```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0  # Required: full git history for commit analysis
+
 - uses: nosovj/llm-release-action@v1
+  id: release
   with:
     model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
   env:
     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     AWS_REGION: us-east-1
+
+- name: Create GitHub Release
+  run: gh release create ${{ steps.release.outputs.next_version }} --notes "${{ steps.release.outputs.changelog }}"
+  env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Inputs
@@ -53,7 +63,7 @@ The action runs in two phases:
 | `model_changelog` | No | `model` | Model for Phase 2 changelog generation (falls back to `model`) |
 | `current_version` | No | auto-detect | Version to compare from. Auto-detects from latest semver tag if not provided. |
 | `head_ref` | No | `HEAD` | Head ref to compare to |
-| `include_diffs` | No | `**/openapi*.yaml,...` | File patterns for diff analysis (comma-separated) |
+| `include_diffs` | No | `**/openapi*.yaml,**/migrations/**,**/*.proto` | File patterns for diff analysis (comma-separated globs) |
 | `max_commits` | No | `50` | Max recent commits to include in full (rest summarized) |
 | `temperature` | No | `0.2` | LLM temperature (lower = more deterministic) |
 | `max_tokens` | No | `4000` | Max tokens in LLM response |
@@ -70,14 +80,16 @@ The action runs in two phases:
 | `bump` | `string` | Bump type: `major`, `minor`, or `patch` |
 | `current_version` | `string` | The version compared from (detected or provided) |
 | `next_version` | `string` | Calculated next semantic version (e.g., `v1.2.0`) |
-| `changelog` | `string` | Generated markdown changelog (legacy single changelog) |
-| `changelogs` | `{audience: {lang: string}}` | Changelogs per audience and language. See [schema](#changelogs) |
-| `metadata` | `{audience: {lang: Metadata}}` | Release metadata (title, summary, highlights) per audience. See [schema](#metadata) |
-| `changes` | `Change[]` | Structured changes with category, title, commits, authors, breaking info. See [schema](#changes) |
-| `stats` | `Stats` | Change counts by category and contributor count. See [schema](#stats) |
-| `breaking_changes` | `BreakingChange[]` | Extracted breaking changes with severity and migration steps. See [schema](#breaking_changes) |
+| `changelog` | `string` | Default markdown changelog (use when not using `changelog_config`) |
+| `changelogs` | `{audience: {lang: string}}` | Changelogs per audience and language (only when using `changelog_config`) |
+| `metadata` | `{audience: {lang: Metadata}}` | Release metadata (title, summary, highlights) per audience |
+| `changes` | `Change[]` | Structured changes with category, title, commits, authors, breaking info |
+| `stats` | `Stats` | Change counts by category and contributor count |
+| `breaking_changes` | `BreakingChange[]` | Extracted breaking changes with severity and migration steps |
 | `reasoning` | `string` | LLM explanation for the version suggestion |
-| `usage` | `{model: UsageStats}` | Token counts and latency per model. See [schema](#usage) |
+| `usage` | `{model: UsageStats}` | Token counts and latency per model |
+
+See [Output Schemas](#output-schemas) below for full type definitions and examples.
 
 ### Output Schemas
 
@@ -675,8 +687,66 @@ Evals cover:
 
 ## Requirements
 
-- `fetch-depth: 0` in checkout action (full git history required)
-- API credentials for your chosen LLM provider
+- `actions/checkout@v4` with `fetch-depth: 0` (full git history required)
+- API credentials for your chosen LLM provider (see [Supported Providers](#supported-providers))
+
+## First Release / No Existing Tags
+
+If no semver tags exist in your repository, you must provide `current_version`:
+
+```yaml
+- uses: nosovj/llm-release-action@v1
+  with:
+    model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+    current_version: v0.0.0  # Start from v0.0.0 for first release
+```
+
+The action will analyze all commits from the beginning of history and suggest `v0.1.0` or `v1.0.0` based on the changes.
+
+## Pre-release Versions
+
+The action handles pre-release versions (e.g., `v1.0.0-alpha.1`, `v2.0.0-beta.3`):
+
+- **Patch bump on pre-release**: Increments the pre-release number (`v1.0.0-alpha.1` → `v1.0.0-alpha.2`)
+- **Minor/Major bump on pre-release**: Promotes to stable release (`v1.0.0-alpha.1` → `v1.1.0` or `v2.0.0`)
+
+## Troubleshooting
+
+### "No semver tags found"
+
+Provide `current_version` explicitly if you have no tags or use non-semver tags:
+
+```yaml
+current_version: v1.0.0
+```
+
+### Rate limit errors (429)
+
+The action automatically retries with exponential backoff. If you hit persistent rate limits:
+- Use a model with higher rate limits
+- Reduce `max_commits` to send less data
+- Consider using AWS Bedrock (higher limits than direct API)
+
+### Authentication errors (401/403)
+
+Verify your credentials are set correctly:
+- **AWS Bedrock**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
+- **OpenAI**: `OPENAI_API_KEY`
+- **Anthropic**: `ANTHROPIC_API_KEY`
+
+### Invalid bump response
+
+If the LLM returns an invalid response, the action will error with details. This is rare but can happen with:
+- Very short commit history (add more context via `include_diffs`)
+- Unusual commit message formats
+- Set `debug: true` to see the full prompt and response
+
+### Changelog is empty
+
+Check that:
+- You have commits between `current_version` and `head_ref`
+- `fetch-depth: 0` is set in checkout
+- The commits have meaningful messages (not just "update" or "fix")
 
 ## License
 
