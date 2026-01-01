@@ -31,6 +31,8 @@ jobs:
         id: llm
         uses: ./
         with:
+          # Recommend Sonnet-class or Nova Pro models for quality release notes
+          # Smaller models (Haiku, Nova Lite) may not follow formatting instructions well
           model: bedrock/us.amazon.nova-pro-v1:0
           current_version: ${{ steps.current.outputs.version }}
           dry_run: ${{ inputs.dry_run }}
