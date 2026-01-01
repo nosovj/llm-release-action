@@ -67,7 +67,7 @@ jobs:
           VERSION: ${{ steps.llm.outputs.next_version }}
           CHANGELOG: ${{ steps.changelog.outputs.content }}
         run: |
-          # Create tag
+          # Create version tag
           git tag "$VERSION"
           git push origin "$VERSION"
 
@@ -76,6 +76,11 @@ jobs:
             --title "Release $VERSION" \
             --notes "$CHANGELOG"
 
+          # Update floating v1 tag to point to this release
+          git tag -f v1
+          git push origin v1 --force
+
           echo "## Release Created" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Created release: $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "Updated v1 tag to point to $VERSION" >> $GITHUB_STEP_SUMMARY
