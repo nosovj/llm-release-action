@@ -243,6 +243,7 @@ Each entry ONE line: `• Feature Name: Brief description`
 {% if max_items %}
 4. Limit to {{ max_items }} most important items per section
 {% endif %}
+5. MANDATORY: Each bullet point MUST be a SINGLE line. NO multi-line entries. NO "Description:" labels. Format: `- Title: One sentence description`
 """.strip())
 
 
