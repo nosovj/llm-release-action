@@ -221,15 +221,19 @@ Write ALL content in {{ language_name }}, including section headers.
 Use Markdown formatting:
 {% if use_emojis %}- Include relevant emojis in section headers (🚀 Features, 🐛 Fixes, ⚠️ Breaking){% endif %}
 - Use headers (##, ###) for sections
-- Each change is ONE bullet line in format: `- Brief Title: Concise description`
-- Do NOT use separate title and description lines (no "Description:" labels)
-- Keep each entry to ONE line - no multi-line entries
+
+CRITICAL FORMAT RULE - Each change MUST be a SINGLE LINE:
+- Format: `- Feature Name: Brief one-sentence description`
+- Example: `- OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint`
+- Example: `- Performance: Improved query speed by 40% through index optimization`
+- NO bold titles, NO multi-line entries, NO separate description lines
+- Keep descriptions concise (under 100 characters ideally)
 {% elif output_format == "html" %}
-Use semantic HTML: <h2>, <h3>, <ul>, <li>, <strong>
-Each <li> should be ONE line: `<li>Brief Title: Concise description</li>`
+Use semantic HTML: <h2>, <h3>, <ul>, <li>
+Each <li> MUST be ONE line: `<li>Feature Name: Brief description</li>`
 {% elif output_format == "plain" %}
 Plain text with clear section headers.
-Each entry ONE line: `• Brief Title: Concise description`
+Each entry ONE line: `• Feature Name: Brief description`
 {% endif %}
 
 ## Guidelines
