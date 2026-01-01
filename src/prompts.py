@@ -156,12 +156,19 @@ Write changelog following this EXACT format:
 
 ### 🚀 Features
 - OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint
-- Dark Mode: Users can now toggle between light and dark themes
+- Performance: Improved query speed by 40% through index optimization
+- Audit Trail: Added activity tracking page to dashboard
 
 ### 🐛 Bug Fixes
-- Login: Fixed session timeout not redirecting to login page
+- Session Handling: Fixed timeout not redirecting to login page
+- Search: Resolved special characters breaking queries
 
-RULES: Each entry ONE line as `- Title: Description`. NO bold, NO multi-line, NO "Description:" labels.
+FORMAT RULES:
+- Title is SHORT (2-4 words) - names the feature/area, NOT a sentence
+- Description explains WHAT changed - adds NEW information, not repetition
+- BAD: "Fixed JSON Parsing Errors: Fixed JSON parsing errors" (redundant!)
+- GOOD: "JSON Parsing: Fixed errors when response contains markdown blocks"
+- NO bold (**), NO multi-line entries
 {% if detail_level == "minimal" %}
 Keep concise - summarize minor changes, detail only significant ones.
 {% endif %}
@@ -240,14 +247,16 @@ Use Markdown formatting with headers (##, ###) for sections.
 - UI Polish: Updated button styles and spacing across dashboard
 
 ### 🐛 Bug Fixes
-- Login: Fixed session timeout not redirecting to login page
-- Search: Resolved issue where special characters broke search queries
+- Session Handling: Fixed timeout not redirecting to login page
+- Search: Resolved issue where special characters broke queries
 ```
 
-RULES:
-- Each entry is ONE LINE: `- Title: Description`
+FORMAT RULES:
+- Title is SHORT (2-4 words) naming the feature/area
+- Description explains WHAT changed - must add NEW information
+- BAD: "Fixed Login Bug: Fixed login bug" (redundant!)
+- GOOD: "Login: Fixed session timeout not redirecting properly"
 - NO bold (**), NO multi-line, NO "Description:" labels
-- Keep descriptions under 100 characters
 {% elif output_format == "html" %}
 ### REQUIRED FORMAT - Follow this example EXACTLY:
 
@@ -262,13 +271,13 @@ RULES:
 
 <h3>🐛 Bug Fixes</h3>
 <ul>
-<li>Login: Fixed session timeout not redirecting to login page</li>
+<li>Session Handling: Fixed timeout not redirecting to login page</li>
 </ul>
 ```
 
-RULES:
-- Each <li> is ONE LINE: `<li>Title: Description</li>`
-- NO nested elements, NO multi-line entries
+FORMAT RULES:
+- Title is SHORT (2-4 words), description adds NEW information
+- Each <li> is ONE LINE, NO nested elements
 {% elif output_format == "plain" %}
 ### REQUIRED FORMAT - Follow this example EXACTLY:
 
@@ -280,12 +289,12 @@ v1.2.0
 • Dark Mode: Users can now toggle between light and dark themes
 
 🐛 Bug Fixes
-• Login: Fixed session timeout not redirecting to login page
+• Session Handling: Fixed timeout not redirecting to login page
 ```
 
-RULES:
-- Each entry is ONE LINE: `• Title: Description`
-- NO multi-line entries
+FORMAT RULES:
+- Title is SHORT (2-4 words), description adds NEW information
+- Each entry ONE LINE, NO multi-line
 {% endif %}
 
 ## Guidelines
