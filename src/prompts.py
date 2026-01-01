@@ -154,8 +154,10 @@ Focus on significant changes. End with: [summary] X minor changes not listed
 <CHANGELOG>
 ## {{ next_version_placeholder }}
 
-Write a formatted changelog appropriate for the release size.
-Group by: Breaking Changes (if any), Features, Bug Fixes, Other.
+Write a formatted changelog with:
+- Each entry on ONE line: `- Brief Title: Concise description`
+- No separate "Description:" lines - combine title and description
+- Group by: Breaking Changes (if any), Features, Improvements, Bug Fixes
 {% if detail_level == "minimal" %}
 Keep concise - summarize minor changes, detail only significant ones.
 {% endif %}
@@ -219,11 +221,15 @@ Write ALL content in {{ language_name }}, including section headers.
 Use Markdown formatting:
 {% if use_emojis %}- Include relevant emojis in section headers (🚀 Features, 🐛 Fixes, ⚠️ Breaking){% endif %}
 - Use headers (##, ###) for sections
-- Bullet points for changes
+- Each change is ONE bullet line in format: `- Brief Title: Concise description`
+- Do NOT use separate title and description lines (no "Description:" labels)
+- Keep each entry to ONE line - no multi-line entries
 {% elif output_format == "html" %}
 Use semantic HTML: <h2>, <h3>, <ul>, <li>, <strong>
+Each <li> should be ONE line: `<li>Brief Title: Concise description</li>`
 {% elif output_format == "plain" %}
-Plain text with clear section headers and dashes for bullets.
+Plain text with clear section headers.
+Each entry ONE line: `• Brief Title: Concise description`
 {% endif %}
 
 ## Guidelines
