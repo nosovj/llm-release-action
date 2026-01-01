@@ -152,12 +152,16 @@ Focus on significant changes. End with: [summary] X minor changes not listed
 {% if generate_changelog %}
 
 <CHANGELOG>
-## {{ next_version_placeholder }}
+Write changelog following this EXACT format:
 
-Write a formatted changelog with:
-- Each entry on ONE line: `- Brief Title: Concise description`
-- No separate "Description:" lines - combine title and description
-- Group by: Breaking Changes (if any), Features, Improvements, Bug Fixes
+### 🚀 Features
+- OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint
+- Dark Mode: Users can now toggle between light and dark themes
+
+### 🐛 Bug Fixes
+- Login: Fixed session timeout not redirecting to login page
+
+RULES: Each entry ONE line as `- Title: Description`. NO bold, NO multi-line, NO "Description:" labels.
 {% if detail_level == "minimal" %}
 Keep concise - summarize minor changes, detail only significant ones.
 {% endif %}
