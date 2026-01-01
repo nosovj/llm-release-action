@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (show suggested version without creating release)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current version
+        id: current
+        run: |
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+
+      - name: Suggest version with LLM
+        id: llm
+        uses: ./
+        with:
+          model: bedrock/us.amazon.nova-pro-v1:0
+          current_version: ${{ steps.current.outputs.version }}
+          dry_run: ${{ inputs.dry_run }}
+          changelog_config: |
+            developer:
+              preset: developer
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+
+      - name: Show results
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Current version:** ${{ steps.current.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Suggested version:** ${{ steps.llm.outputs.next_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Bump type:** ${{ steps.llm.outputs.bump }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Changelog" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.llm.outputs.changelog }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create GitHub Release
+        if: inputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.llm.outputs.next_version }}
+          CHANGELOG: ${{ steps.llm.outputs.changelog }}
+        run: |
+          # Create tag
+          git tag "$VERSION"
+          git push origin "$VERSION"
+
+          # Create release
+          gh release create "$VERSION" \
+            --title "Release $VERSION" \
+            --notes "$CHANGELOG"
+
+          echo "## Release Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Created release: $VERSION" >> $GITHUB_STEP_SUMMARY
