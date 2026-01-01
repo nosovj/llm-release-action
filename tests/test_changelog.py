@@ -9,8 +9,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from changelog import (
+    AUDIENCE_PERSONAS,
     CATEGORY_TO_SECTION,
-    PRESET_DESCRIPTIONS,
     SECTION_NAMES,
     TONE_DESCRIPTIONS,
     build_changelog_prompt,
@@ -708,12 +708,12 @@ class TestConstants:
         for tone in VALID_TONES:
             assert tone in TONE_DESCRIPTIONS
 
-    def test_preset_descriptions_complete(self) -> None:
-        """Test that all presets have descriptions."""
+    def test_preset_personas_complete(self) -> None:
+        """Test that all presets have audience personas."""
         from presets import VALID_PRESETS
 
         for preset in VALID_PRESETS:
-            assert preset in PRESET_DESCRIPTIONS
+            assert preset in AUDIENCE_PERSONAS
 
     def test_section_names_complete(self) -> None:
         """Test that all sections have display names."""

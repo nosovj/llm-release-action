@@ -205,34 +205,6 @@ HOW TO COMMUNICATE:
 - Mention rollback considerations""",
 }
 
-# Legacy preset descriptions (kept for backward compatibility)
-PRESET_DESCRIPTIONS: Dict[str, str] = {
-    "developer": (
-        "Software developers who need technical details, API changes, migration guides, "
-        "and commit references to understand the implementation impact."
-    ),
-    "customer": (
-        "End users who care about new features, improvements, and bug fixes that affect "
-        "their daily usage. They want to know what's new and how it benefits them."
-    ),
-    "executive": (
-        "Business stakeholders who need a high-level summary of business impact, key "
-        "features, and strategic changes without technical details."
-    ),
-    "marketing": (
-        "Marketing teams who need compelling feature announcements and benefits-focused "
-        "content for promotional materials."
-    ),
-    "security": (
-        "Security teams who need to assess vulnerabilities, patches, and security-related "
-        "changes for compliance and risk management."
-    ),
-    "ops": (
-        "Operations and DevOps teams who need to understand infrastructure changes, "
-        "deployment requirements, and operational impacts."
-    ),
-}
-
 # Section display names (used for prompt building)
 SECTION_NAMES: Dict[str, str] = {
     "breaking": "Breaking Changes",
@@ -530,19 +502,19 @@ def build_changelog_prompt(
     Returns:
         Complete prompt string for LLM
     """
-    # Get full audience persona (preferred) or fall back to description
-    preset_key = config.preset or ""
-    audience_persona = AUDIENCE_PERSONAS.get(preset_key)
-    if not audience_persona:
-        # Fall back to legacy description
-        audience_desc = PRESET_DESCRIPTIONS.get(
-            preset_key,
-            f"Users interested in {config.name} updates who need relevant changelog information."
-        )
-        audience_persona = f"You are writing a changelog for: {audience_desc}"
+    # Get audience persona
+    if config.preset:
+        audience_persona = AUDIENCE_PERSONAS.get(config.preset)
+        if not audience_persona:
+            raise ValueError(f"Unknown preset '{config.preset}'. Valid presets: {list(AUDIENCE_PERSONAS.keys())}")
+    else:
+        # Custom audience without preset - generate a basic persona from the audience name
+        audience_persona = f"You are writing a changelog for {config.name}."
 
     # Get tone description
-    tone_desc = TONE_DESCRIPTIONS.get(config.tone, TONE_DESCRIPTIONS["professional"])
+    tone_desc = TONE_DESCRIPTIONS.get(config.tone)
+    if not tone_desc:
+        raise ValueError(f"Unknown tone '{config.tone}'. Valid tones: {list(TONE_DESCRIPTIONS.keys())}")
 
     # Group changes by section
     changes_by_section = get_changes_by_section(changes, config.sections)
@@ -643,14 +615,19 @@ def build_metadata_prompt(
     Returns:
         Prompt string for metadata generation
     """
-    # Get audience description
-    audience_desc = PRESET_DESCRIPTIONS.get(
-        config.preset or "",
-        f"Users interested in {config.name} updates."
-    )
+    # Get audience persona
+    if config.preset:
+        audience_persona = AUDIENCE_PERSONAS.get(config.preset)
+        if not audience_persona:
+            raise ValueError(f"Unknown preset '{config.preset}'. Valid presets: {list(AUDIENCE_PERSONAS.keys())}")
+    else:
+        # Custom audience without preset - generate a basic persona from the audience name
+        audience_persona = f"You are writing a changelog for {config.name}."
 
     # Get tone description
-    tone_desc = TONE_DESCRIPTIONS.get(config.tone, TONE_DESCRIPTIONS["professional"])
+    tone_desc = TONE_DESCRIPTIONS.get(config.tone)
+    if not tone_desc:
+        raise ValueError(f"Unknown tone '{config.tone}'. Valid tones: {list(TONE_DESCRIPTIONS.keys())}")
 
     # Build a brief summary of changes
     change_summaries = []
@@ -680,7 +657,7 @@ def build_metadata_prompt(
     prompt = f"""Generate release metadata for version {version}.
 
 ## Audience
-{audience_desc}
+{audience_persona}
 
 ## Tone
 {tone_desc}
