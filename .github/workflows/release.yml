@@ -40,6 +40,14 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
+      - name: Extract changelog
+        id: changelog
+        run: |
+          CHANGELOG=$(echo '${{ steps.llm.outputs.changelogs }}' | jq -r '.developer.en')
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Show results
         run: |
           echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
@@ -50,14 +58,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Changelog" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.llm.outputs.changelog }}" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.changelog.outputs.content }}" >> $GITHUB_STEP_SUMMARY
 
       - name: Create GitHub Release
         if: inputs.dry_run == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.llm.outputs.next_version }}
-          CHANGELOG: ${{ steps.llm.outputs.changelog }}
+          CHANGELOG: ${{ steps.changelog.outputs.content }}
         run: |
           # Create tag
           git tag "$VERSION"
