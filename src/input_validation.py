@@ -7,12 +7,186 @@ the action fails fast with clear error messages.
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
+import regex
 import yaml
 
 from config import validate_changelog_config
 from content_scanner import scan_content_override, handle_scan_result
+
+
+# Maximum pattern length to reduce ReDoS attack surface
+MAX_PATTERN_LENGTH = 200
+
+# Default timeout for regex operations (in seconds)
+REGEX_TIMEOUT = 1.0
+
+
+class PatternCompilationError(Exception):
+    """Error raised when a regex pattern fails to compile or is unsafe."""
+
+    pass
+
+
+class PatternTimeoutError(Exception):
+    """Error raised when a regex pattern times out during matching."""
+
+    pass
+
+
+def validate_pattern_safety(pattern: str) -> List[str]:
+    """Validate that a regex pattern is not prone to ReDoS attacks.
+
+    Detects dangerous patterns:
+    - Nested quantifiers: (a+)+, (a*)+, (a?)+, (a*)*, etc.
+    - Overlapping alternations: (a|a)+, (a|ab)+
+    - Excessive repetition groups
+
+    Args:
+        pattern: Regex pattern to validate
+
+    Returns:
+        List of validation errors (empty if safe)
+    """
+    errors = []
+
+    # Check pattern length
+    if len(pattern) > MAX_PATTERN_LENGTH:
+        errors.append(
+            f"Pattern too long ({len(pattern)} chars, max {MAX_PATTERN_LENGTH})"
+        )
+        return errors  # Skip other checks for overly long patterns
+
+    # Detect nested quantifiers: (...)+ or (...)* followed by another quantifier
+    # Pattern: group with quantifier inside, followed by outer quantifier
+    nested_quantifier_patterns = [
+        r"\([^)]*[+*]\)[+*?]",  # (...+)* or (...*)+
+        r"\([^)]*[+*]\)\{",  # (...+){n} or (...*){n}
+        r"\([^)]*\{[^}]+\}\)[+*?]",  # (...{n})+
+        r"\([^)]*\{[^}]+\}\)\{",  # (...{n}){m}
+    ]
+
+    for np in nested_quantifier_patterns:
+        if re.search(np, pattern):
+            errors.append(
+                f"Pattern contains nested quantifiers which can cause catastrophic backtracking: {pattern}"
+            )
+            break
+
+    # Detect overlapping alternations with quantifier: (a|a)+ or similar
+    # Simple check: alternation inside group with quantifier
+    if re.search(r"\([^)]*\|[^)]*\)[+*]", pattern):
+        # Check if the alternation parts overlap
+        match = re.search(r"\(([^)|]+)\|([^)]+)\)[+*]", pattern)
+        if match:
+            alt1, alt2 = match.group(1), match.group(2)
+            # Check for obvious overlap (one starts with the other)
+            if alt1.startswith(alt2) or alt2.startswith(alt1):
+                errors.append(
+                    f"Pattern contains overlapping alternations which can cause backtracking: {pattern}"
+                )
+
+    # Detect patterns like .* or .+ followed by same, which can be slow
+    if re.search(r"\.\*.*\.\*", pattern) or re.search(r"\.\+.*\.\+", pattern):
+        # Only warn if there's no anchoring
+        if not pattern.startswith("^") and not pattern.endswith("$"):
+            errors.append(
+                f"Pattern contains multiple unbounded wildcards without anchoring: {pattern}"
+            )
+
+    return errors
+
+
+class TimeoutPattern:
+    """Wrapper around regex.Pattern that applies timeout on matching operations."""
+
+    def __init__(self, pattern: regex.Pattern, timeout: float):
+        self._pattern = pattern
+        self._timeout = timeout
+
+    def search(self, string: str, *args, **kwargs):
+        """Search with timeout."""
+        try:
+            return self._pattern.search(string, *args, timeout=self._timeout, **kwargs)
+        except TimeoutError:
+            raise PatternTimeoutError(
+                f"Pattern matching timed out after {self._timeout}s"
+            )
+
+    def match(self, string: str, *args, **kwargs):
+        """Match with timeout."""
+        try:
+            return self._pattern.match(string, *args, timeout=self._timeout, **kwargs)
+        except TimeoutError:
+            raise PatternTimeoutError(
+                f"Pattern matching timed out after {self._timeout}s"
+            )
+
+    def fullmatch(self, string: str, *args, **kwargs):
+        """Fullmatch with timeout."""
+        try:
+            return self._pattern.fullmatch(string, *args, timeout=self._timeout, **kwargs)
+        except TimeoutError:
+            raise PatternTimeoutError(
+                f"Pattern matching timed out after {self._timeout}s"
+            )
+
+    def findall(self, string: str, *args, **kwargs):
+        """Findall with timeout."""
+        try:
+            return self._pattern.findall(string, *args, timeout=self._timeout, **kwargs)
+        except TimeoutError:
+            raise PatternTimeoutError(
+                f"Pattern matching timed out after {self._timeout}s"
+            )
+
+    def sub(self, repl, string: str, *args, **kwargs):
+        """Sub with timeout."""
+        try:
+            return self._pattern.sub(repl, string, *args, timeout=self._timeout, **kwargs)
+        except TimeoutError:
+            raise PatternTimeoutError(
+                f"Pattern matching timed out after {self._timeout}s"
+            )
+
+    @property
+    def pattern(self):
+        """Return the pattern string."""
+        return self._pattern.pattern
+
+
+def safe_compile_pattern(
+    pattern: str, timeout: float = REGEX_TIMEOUT
+) -> TimeoutPattern:
+    """Safely compile a regex pattern with timeout support.
+
+    Uses the `regex` library which supports timeout on matching operations.
+    Returns a wrapper that automatically applies timeout on all matching methods.
+
+    Args:
+        pattern: Regex pattern to compile
+        timeout: Timeout in seconds for matching operations (default: 1.0)
+
+    Returns:
+        TimeoutPattern wrapper with automatic timeout on matching operations
+
+    Raises:
+        PatternCompilationError: If pattern is invalid or fails safety checks
+    """
+    # First, validate pattern safety
+    safety_errors = validate_pattern_safety(pattern)
+    if safety_errors:
+        raise PatternCompilationError("; ".join(safety_errors))
+
+    try:
+        # Compile pattern (timeout is applied on matching operations, not compile)
+        compiled = regex.compile(pattern, regex.IGNORECASE)
+        return TimeoutPattern(compiled, timeout)
+    except regex.error as e:
+        raise PatternCompilationError(f"Invalid regex pattern: {e}")
+    except Exception as e:
+        raise PatternCompilationError(f"Failed to compile pattern: {e}")
 
 
 @dataclass
@@ -102,25 +276,33 @@ def validate_language_code(code: str) -> List[str]:
     return errors
 
 
-def validate_filter_value(value: str, field_name: str) -> List[str]:
+def validate_filter_value(value: str, field_name: str, is_pattern: bool = False) -> List[str]:
     """Validate filter values (patterns, authors, labels).
 
     Args:
         value: Value to validate
         field_name: Name of the field for error messages
+        is_pattern: Whether this value is a regex pattern (applies stricter validation)
 
     Returns:
         List of validation errors (empty if valid)
     """
     errors = []
 
-    # Length limit
-    if len(value) > 100:
-        errors.append(f"{field_name} value too long (max 100 chars)")
+    # Pattern length limit (stricter for regex patterns)
+    max_length = MAX_PATTERN_LENGTH if is_pattern else 100
+    if len(value) > max_length:
+        errors.append(f"{field_name} value too long (max {max_length} chars)")
 
     # No control characters or newlines
     if re.search(r"[\x00-\x1f]", value):
         errors.append(f"{field_name} contains invalid characters")
+
+    # For patterns, also validate ReDoS safety
+    if is_pattern:
+        safety_errors = validate_pattern_safety(value)
+        for err in safety_errors:
+            errors.append(f"{field_name}: {err}")
 
     return errors
 
@@ -235,9 +417,11 @@ def validate_audience_configs(configs: Dict[str, Any]) -> List[str]:
         if not isinstance(settings, dict):
             continue
 
-        # Validate exclude patterns
+        # Validate exclude patterns (with ReDoS safety check)
         for pattern in settings.get("exclude_patterns", []):
-            pattern_errors = validate_filter_value(pattern, f"{audience}.exclude_patterns")
+            pattern_errors = validate_filter_value(
+                pattern, f"{audience}.exclude_patterns", is_pattern=True
+            )
             errors.extend(pattern_errors)
 
         # Validate exclude authors

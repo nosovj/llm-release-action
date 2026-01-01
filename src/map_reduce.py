@@ -12,7 +12,7 @@ Architecture:
     chunk_with_overlap()
         ↓
     MAP: extract_changes_from_chunk() for each (parallel)
-        ↓
+        ↓ (each chunk is sanitized before embedding in prompt)
     REDUCE: reduce_changes() - deduplicate, consolidate, prioritize
         ↓
     List[Change]
@@ -23,6 +23,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, List, Optional, Tuple
 
+from content_scanner import sanitize_content, validate_response
 from models import Change, ChangeCategory, Importance
 from text_splitter import chunk_with_overlap, needs_chunking
 
@@ -166,12 +167,18 @@ def _extract_changes_from_response(response: str) -> List[Change]:
 
 
 def _changes_to_text(changes: List[Change]) -> str:
-    """Convert changes to text format for reduce prompt."""
+    """Convert changes to text format for reduce prompt.
+
+    Titles and descriptions are sanitized to prevent injection in the reduce phase.
+    """
     lines = []
     for c in changes:
-        line = f"[{c.category.value}|{c.importance.value}] {c.title}"
+        # Sanitize content before embedding in reduce prompt
+        sanitized_title = sanitize_content(c.title)
+        line = f"[{c.category.value}|{c.importance.value}] {sanitized_title}"
         if c.description:
-            line += f" | {c.description}"
+            sanitized_desc = sanitize_content(c.description)
+            line += f" | {sanitized_desc}"
         lines.append(line)
     return "\n".join(lines)
 
@@ -182,6 +189,9 @@ def extract_changes_from_chunk(
 ) -> List[Change]:
     """Extract changes from a single chunk using LLM.
 
+    The chunk is sanitized before embedding in the prompt to remove
+    any potential injection patterns.
+
     Args:
         chunk: Text chunk to analyze
         llm_caller: Function that calls the LLM and returns response
@@ -189,8 +199,16 @@ def extract_changes_from_chunk(
     Returns:
         List of extracted changes
     """
-    prompt = MAP_PROMPT_TEMPLATE.format(content=chunk)
+    # Sanitize content before embedding in prompt
+    sanitized_chunk = sanitize_content(chunk)
+    prompt = MAP_PROMPT_TEMPLATE.format(content=sanitized_chunk)
     response = llm_caller(prompt)
+
+    # Validate response for injection indicators
+    response_issues = validate_response(response)
+    if response_issues:
+        print(f"Warning: Suspicious patterns in LLM response: {response_issues}")
+
     return _extract_changes_from_response(response)
 
 
@@ -217,6 +235,12 @@ def reduce_changes(
     changes_text = _changes_to_text(all_changes)
     prompt = REDUCE_PROMPT_TEMPLATE.format(changes_text=changes_text)
     response = llm_caller(prompt)
+
+    # Validate response for injection indicators
+    response_issues = validate_response(response)
+    if response_issues:
+        print(f"Warning: Suspicious patterns in reduce response: {response_issues}")
+
     reduced = _extract_changes_from_response(response)
 
     # Fallback: if reduce failed to parse, use original changes sorted by importance

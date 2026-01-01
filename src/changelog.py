@@ -7,12 +7,26 @@ This module handles the generation of audience-specific changelogs by:
 
 The module uses shared utilities from i18n.py, templates.py, and repo_url.py
 for consistent formatting across the codebase.
+
+All user-provided content (titles, descriptions) is sanitized before embedding
+in prompts to prevent prompt injection attacks.
 """
 
+import logging
 import re
 from typing import Callable, Dict, List, Optional, Tuple
 
+import regex
+
 from config import AudienceConfig, ChangelogConfig
+from content_scanner import sanitize_content
+from input_validation import (
+    PatternCompilationError,
+    safe_compile_pattern,
+)
+
+logger = logging.getLogger(__name__)
+
 from i18n import (
     SECTION_NAMES as I18N_SECTION_NAMES,
     TONE_DESCRIPTIONS,
@@ -239,7 +253,7 @@ def filter_changes(changes: List[Change], config: AudienceConfig) -> List[Change
 
     Applies:
     - exclude_categories
-    - exclude_patterns (regex match on title/description)
+    - exclude_patterns (regex match on title/description) with ReDoS protection
     - exclude_labels
     - exclude_authors
     - max_items_per_section (applied per-section after other filters)
@@ -250,17 +264,22 @@ def filter_changes(changes: List[Change], config: AudienceConfig) -> List[Change
 
     Returns:
         Filtered list of changes
+
+    Raises:
+        PatternCompilationError: If an exclude pattern is unsafe (ReDoS-prone)
     """
     filtered = []
 
-    # Compile exclude patterns once
-    compiled_patterns = []
+    # Compile exclude patterns once with safe compilation (ReDoS protection)
+    compiled_patterns: List[regex.Pattern] = []
     for pattern in config.exclude_patterns:
         try:
-            compiled_patterns.append(re.compile(pattern, re.IGNORECASE))
-        except re.error:
-            # Skip invalid patterns
-            continue
+            # Use safe_compile_pattern for timeout and ReDoS safety validation
+            compiled_patterns.append(safe_compile_pattern(pattern))
+        except PatternCompilationError as e:
+            # Log and propagate the error - do not silently skip unsafe patterns
+            logger.error(f"Unsafe or invalid exclude pattern rejected: {pattern} - {e}")
+            raise
 
     for change in changes:
         # Check category exclusion
@@ -280,11 +299,21 @@ def filter_changes(changes: List[Change], config: AudienceConfig) -> List[Change
             continue
 
         # Check pattern exclusion (match against title and description)
+        # Patterns are compiled with timeout - TimeoutError is caught and logged
         pattern_matched = False
         for pattern in compiled_patterns:
-            if pattern.search(change.title) or pattern.search(change.description):
-                pattern_matched = True
-                break
+            try:
+                if pattern.search(change.title) or pattern.search(change.description):
+                    pattern_matched = True
+                    break
+            except regex.TimeoutError:
+                # Pattern timed out - this should be rare since we validate patterns
+                # Log the issue and treat as non-match to allow processing to continue
+                logger.warning(
+                    f"Pattern '{pattern.pattern}' timed out matching against "
+                    f"change '{change.title[:50]}...' - skipping this pattern"
+                )
+                continue
         if pattern_matched:
             continue
 
@@ -408,6 +437,9 @@ def _format_change_for_prompt(
 ) -> str:
     """Format a single change for inclusion in the prompt.
 
+    Title and description are sanitized to remove potential injection patterns
+    before embedding in the prompt.
+
     Args:
         change: The change to format
         config: Audience configuration
@@ -416,10 +448,13 @@ def _format_change_for_prompt(
     Returns:
         Formatted change string
     """
-    lines = [f"- **{change.title}**"]
+    # Sanitize user-provided content before embedding in prompt
+    sanitized_title = sanitize_content(change.title)
+    lines = [f"- **{sanitized_title}**"]
 
     if change.description:
-        lines.append(f"  Description: {change.description}")
+        sanitized_description = sanitize_content(change.description)
+        lines.append(f"  Description: {sanitized_description}")
 
     if config.benefit_focused and change.user_benefit:
         lines.append(f"  User benefit: {change.user_benefit}")

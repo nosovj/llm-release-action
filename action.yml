@@ -61,6 +61,14 @@ inputs:
     description: 'YAML config for audiences. Format: {audience: {preset, languages, tone, ...}}. Presets: developer, customer, executive, marketing, security, ops. See README.'
     required: false
     default: ''
+  validate_injections:
+    description: 'Prompt injection validation mode. "both" = pattern + LLM (default), "pattern" = regex only, "llm" = LLM only, "none" = disabled'
+    required: false
+    default: 'both'
+  validation_model:
+    description: 'Optional model for injection validation LLM checks. Falls back to model if not set.'
+    required: false
+    default: ''
 
 outputs:
   bump:
@@ -125,5 +133,7 @@ runs:
         INPUT_DRY_RUN: ${{ inputs.dry_run }}
         INPUT_CONTENT_OVERRIDE: ${{ inputs.content_override }}
         INPUT_CHANGELOG_CONFIG: ${{ inputs.changelog_config }}
+        INPUT_VALIDATE_INJECTIONS: ${{ inputs.validate_injections }}
+        INPUT_VALIDATION_MODEL: ${{ inputs.validation_model }}
       run: |
         python ${{ github.action_path }}/src/analyze.py

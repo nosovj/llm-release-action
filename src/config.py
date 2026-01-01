@@ -93,6 +93,10 @@ class AudienceConfig:
     # Format
     output_format: str = "markdown"
 
+    # Internal content detection
+    skip_internal_check: bool = False  # Set True for developer/ops presets
+    internal_domain_patterns: List[str] = field(default_factory=list)  # Custom patterns
+
     # Validation
     validation: ValidationConfig = field(default_factory=ValidationConfig)
 
@@ -261,5 +265,30 @@ def validate_changelog_config(config: Dict[str, Any]) -> List[str]:
                         errors.append(
                             f"{audience}: Invalid on_failure '{on_failure}'. Valid: {valid_on_failure}"
                         )
+
+        # Internal domain patterns validation
+        if patterns := settings.get("internal_domain_patterns"):
+            if not isinstance(patterns, list):
+                errors.append(f"{audience}: internal_domain_patterns must be a list")
+            else:
+                import re
+
+                for i, pattern in enumerate(patterns):
+                    if not isinstance(pattern, str):
+                        errors.append(
+                            f"{audience}: internal_domain_patterns[{i}] must be a string"
+                        )
+                    else:
+                        try:
+                            re.compile(pattern)
+                        except re.error as e:
+                            errors.append(
+                                f"{audience}: internal_domain_patterns[{i}] is not a valid regex: {e}"
+                            )
+
+        # skip_internal_check validation
+        if skip_check := settings.get("skip_internal_check"):
+            if not isinstance(skip_check, bool):
+                errors.append(f"{audience}: skip_internal_check must be a boolean")
 
     return errors

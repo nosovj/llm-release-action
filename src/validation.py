@@ -73,6 +73,18 @@ INTERNAL_CONTENT_PATTERNS = [
     r"\bdatabase\s+schema\b",
     r"\btable\s+column\b",
     r"\bindex\b.*\btable\b",
+    # AWS ARNs
+    r"arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d*:.+",
+    # Internal URLs (*.internal.*, *.local.*, *.corp.*, *.private.*)
+    r"\b\w+\.(internal|local|corp|private)\.\w+",
+    # Slack webhooks
+    r"hooks\.slack\.com/",
+    # Generic token/secret patterns (api_key, api-key, token, secret followed by value)
+    r"(api[_-]?key|token|secret)[=:]\s*[\"']?\w{20,}",
+    # Private IP ranges
+    r"\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",  # 10.x.x.x
+    r"\b192\.168\.\d{1,3}\.\d{1,3}\b",  # 192.168.x.x
+    r"\b172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b",  # 172.16-31.x.x
 ]
 
 
@@ -240,34 +252,61 @@ def check_empty_sections(content: str) -> List[str]:
     return issues
 
 
-def check_internal_content(content: str, preset: Optional[str] = None) -> List[str]:
-    """Check for leaked internal content in customer-facing changelogs.
+def check_internal_content(
+    content: str,
+    preset: Optional[str] = None,
+    skip_internal_check: bool = False,
+    custom_patterns: Optional[List[str]] = None,
+) -> List[str]:
+    """Check for leaked internal content in changelogs.
 
-    Only applies to customer, marketing, and executive presets.
+    By default, applies to ALL presets except developer and ops (which explicitly
+    opt-out via skip_internal_check). This prevents internal content from leaking
+    into customer-facing changelogs even when using custom preset names.
 
     Args:
         content: Changelog content
-        preset: Audience preset name
+        preset: Audience preset name (used for default skip behavior)
+        skip_internal_check: If True, skip the internal content check entirely
+        custom_patterns: Additional regex patterns to check (merged with built-in)
 
     Returns:
-        List of internal content issues
+        List of internal content issues (warnings, not errors)
     """
     import re
 
-    # Only check for customer-facing presets
-    customer_facing_presets = {"customer", "marketing", "executive"}
-    if preset is None or preset not in customer_facing_presets:
+    # Check if we should skip based on explicit opt-out
+    if skip_internal_check:
         return []
+
+    # Default opt-out for developer and ops presets (they expect internal content)
+    # All other presets (including custom ones) are checked by default
+    developer_ops_presets = {"developer", "ops"}
+    if preset in developer_ops_presets:
+        return []
+
+    # Merge built-in patterns with any custom patterns
+    patterns_to_check = list(INTERNAL_CONTENT_PATTERNS)
+    if custom_patterns:
+        patterns_to_check.extend(custom_patterns)
 
     issues = []
 
-    for pattern in INTERNAL_CONTENT_PATTERNS:
-        matches = re.findall(pattern, content, re.IGNORECASE)
-        if matches:
-            # Deduplicate and show first 3
-            unique_matches = list(set(m.strip() for m in matches))[:3]
-            issues.append(f"Internal content leaked: {', '.join(unique_matches)}")
-            break  # One issue is enough to flag
+    for pattern in patterns_to_check:
+        try:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            if matches:
+                # Deduplicate and show first 3
+                # Handle both string matches and tuple matches (from groups)
+                if matches and isinstance(matches[0], tuple):
+                    unique_matches = list(set(m[0].strip() if m[0] else str(m) for m in matches))[:3]
+                else:
+                    unique_matches = list(set(str(m).strip() for m in matches))[:3]
+                issues.append(f"Internal content leaked: {', '.join(unique_matches)}")
+                break  # One issue is enough to flag
+        except re.error:
+            # Skip invalid regex patterns
+            continue
 
     return issues
 
@@ -320,6 +359,8 @@ def validate_changelog(
     config: ValidationConfig,
     output_format: str = "markdown",
     preset: Optional[str] = None,
+    skip_internal_check: bool = False,
+    internal_domain_patterns: Optional[List[str]] = None,
 ) -> ValidationResult:
     """Validate a generated changelog.
 
@@ -330,6 +371,8 @@ def validate_changelog(
         config: Validation configuration
         output_format: Expected format (markdown, html, json, plain)
         preset: Audience preset name (for internal content checks)
+        skip_internal_check: If True, skip internal content detection
+        internal_domain_patterns: Custom patterns for internal content detection
 
     Returns:
         ValidationResult with valid flag and issues
@@ -372,8 +415,13 @@ def validate_changelog(
     for issue in empty_section_issues:
         warnings.append(issue)
 
-    # Internal content check (for customer-facing presets)
-    internal_content_issues = check_internal_content(changelog, preset)
+    # Internal content check (applies by default, opt-out for developer/ops)
+    internal_content_issues = check_internal_content(
+        changelog,
+        preset=preset,
+        skip_internal_check=skip_internal_check,
+        custom_patterns=internal_domain_patterns,
+    )
     for issue in internal_content_issues:
         warnings.append(issue)
 

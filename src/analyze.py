@@ -74,7 +74,16 @@ _usage = AggregateUsage()
 from analyzer import parse_phase1_response
 from changelog import build_changelog_prompt, filter_changes, generate_changelog
 from config import AudienceConfig, ChangelogConfig
-from content_scanner import handle_scan_result, scan_content_override, truncate_for_context
+from content_scanner import (
+    ValidationMode,
+    handle_scan_result,
+    parse_validation_mode,
+    sanitize_content,
+    scan_content_override,
+    truncate_for_context,
+    validate_response,
+    validate_with_llm,
+)
 from input_validation import validate_inputs
 from map_reduce import determine_version_from_changes, process_large_input
 from model_config import ModelConfig
@@ -331,10 +340,13 @@ def run_phase1(
     max_tokens: int,
     timeout: int,
     debug: bool,
+    validation_mode: ValidationMode = ValidationMode.BOTH,
+    validation_model: Optional[str] = None,
 ) -> AnalysisResult:
     """Run Phase 1: Semantic Analysis.
 
     For large inputs, uses map/reduce to avoid data loss from truncation.
+    Content is scanned for injection patterns and optionally validated with LLM.
 
     Args:
         model: LiteLLM model string
@@ -348,11 +360,16 @@ def run_phase1(
         max_tokens: Max response tokens
         timeout: Request timeout
         debug: Enable debug logging
+        validation_mode: Injection validation mode (both, pattern, llm, none)
+        validation_model: Model to use for LLM validation (defaults to model)
 
     Returns:
         AnalysisResult with bump, reasoning, and changes
     """
     log_group("Phase 1: Semantic Analysis")
+
+    # Use provided validation model or fall back to main model
+    val_model = validation_model if validation_model else model
 
     # Check if we need map/reduce for large content_override
     if content_override and needs_chunking(content_override, threshold=2000):
@@ -412,12 +429,60 @@ def run_phase1(
 
     # Normal processing path
     if content_override:
-        # Scan and potentially truncate content
-        scan_result = scan_content_override(content_override)
-        handle_scan_result(scan_result)
+        # Scan content for injection patterns (Layer 1 - pattern-based)
+        if validation_mode in (ValidationMode.BOTH, ValidationMode.PATTERN):
+            scan_result = scan_content_override(content_override)
+            handle_scan_result(scan_result)  # Raises on HIGH/CRITICAL
 
-        if scan_result.truncated:
-            content_override = truncate_for_context(content_override)
+            # For MEDIUM threats, optionally do LLM validation (Layer 2)
+            if (
+                validation_mode == ValidationMode.BOTH
+                and scan_result.threat_level.value == "medium"
+            ):
+                print("MEDIUM threat detected, performing LLM validation...")
+
+                def llm_validation_caller(prompt: str) -> str:
+                    response, _ = call_llm_with_retry(
+                        model=val_model,
+                        prompt=prompt,
+                        temperature=0.0,  # Deterministic for validation
+                        max_tokens=10,  # Only need YES/NO
+                        timeout=30,  # Shorter timeout for validation
+                        debug=debug,
+                    )
+                    return response
+
+                is_injection = validate_with_llm(content_override, llm_validation_caller)
+                if is_injection:
+                    raise ValueError(
+                        "Content rejected: LLM validation detected prompt injection attempt"
+                    )
+                print("LLM validation passed")
+
+            if scan_result.truncated:
+                content_override = truncate_for_context(content_override)
+        elif validation_mode == ValidationMode.LLM:
+            # LLM-only validation
+            print("Performing LLM-only validation...")
+
+            def llm_validation_caller(prompt: str) -> str:
+                response, _ = call_llm_with_retry(
+                    model=val_model,
+                    prompt=prompt,
+                    temperature=0.0,
+                    max_tokens=10,
+                    timeout=30,
+                    debug=debug,
+                )
+                return response
+
+            is_injection = validate_with_llm(content_override, llm_validation_caller)
+            if is_injection:
+                raise ValueError(
+                    "Content rejected: LLM validation detected prompt injection attempt"
+                )
+            print("LLM validation passed")
+        # ValidationMode.NONE - skip all validation
 
         prompt = build_semantic_analysis_prompt(
             commits=[],
@@ -698,6 +763,12 @@ def main() -> int:
         content_override = os.environ.get("INPUT_CONTENT_OVERRIDE", "")
         changelog_config_str = os.environ.get("INPUT_CHANGELOG_CONFIG", "")
 
+        # Parse injection validation settings
+        validate_injections_str = os.environ.get("INPUT_VALIDATE_INJECTIONS", "both")
+        validation_model_str = os.environ.get("INPUT_VALIDATION_MODEL", "")
+        validation_mode = parse_validation_mode(validate_injections_str)
+        validation_model = validation_model_str if validation_model_str else model
+
         # Configure per-phase models
         model_config = ModelConfig.from_env(
             model=model,
@@ -788,6 +859,8 @@ def main() -> int:
             max_tokens=max_tokens,
             timeout=timeout,
             debug=debug,
+            validation_mode=validation_mode,
+            validation_model=validation_model,
         )
 
         # Calculate next version

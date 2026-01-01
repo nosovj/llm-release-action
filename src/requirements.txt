@@ -15,3 +15,6 @@ langdetect>=1.0.9
 
 # Templating for prompts
 Jinja2>=3.1.0
+
+# Regex with timeout support for ReDoS protection
+regex>=2024.0.0

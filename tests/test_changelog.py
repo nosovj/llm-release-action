@@ -3,6 +3,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -117,17 +119,21 @@ class TestFilterChanges:
         assert feature_count == 2
         assert fix_count == 2
 
-    def test_invalid_regex_pattern_ignored(self) -> None:
-        """Test that invalid regex patterns are silently ignored."""
+    def test_invalid_regex_pattern_raises_error(self) -> None:
+        """Test that invalid regex patterns raise PatternCompilationError."""
+        from input_validation import PatternCompilationError
+
         changes = [
             Change(id="1", category=ChangeCategory.FEATURE, title="Feature", description=""),
         ]
 
         config = AudienceConfig(name="test", exclude_patterns=["[invalid regex"])
-        result = filter_changes(changes, config)
 
-        # Should not crash, returns all changes
-        assert len(result) == 1
+        # With ReDoS protection, invalid patterns now raise errors instead of being silently ignored
+        with pytest.raises(PatternCompilationError) as exc_info:
+            filter_changes(changes, config)
+
+        assert "invalid regex" in str(exc_info.value).lower()
 
     def test_combined_filters(self) -> None:
         """Test multiple filters applied together."""

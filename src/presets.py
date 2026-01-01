@@ -56,6 +56,7 @@ DEVELOPER: Dict[str, Any] = {
     "generate_summary": False,
     "generate_highlights": 0,
     "output_format": "markdown",
+    "skip_internal_check": True,  # Developer changelogs include internal content
 }
 
 # Customer preset - user-facing changes
@@ -181,6 +182,7 @@ OPS: Dict[str, Any] = {
     "generate_summary": False,
     "generate_highlights": 0,
     "output_format": "markdown",
+    "skip_internal_check": True,  # Ops changelogs include internal content
 }
 
 # Preset mapping
