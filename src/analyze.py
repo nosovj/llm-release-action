@@ -764,7 +764,7 @@ def main() -> int:
         changelog_config_str = os.environ.get("INPUT_CHANGELOG_CONFIG", "")
 
         # Parse injection validation settings
-        validate_injections_str = os.environ.get("INPUT_VALIDATE_INJECTIONS", "both")
+        validate_injections_str = os.environ.get("INPUT_VALIDATE_INJECTIONS", "pattern")
         validation_model_str = os.environ.get("INPUT_VALIDATION_MODEL", "")
         validation_mode = parse_validation_mode(validate_injections_str)
         validation_model = validation_model_str if validation_model_str else model

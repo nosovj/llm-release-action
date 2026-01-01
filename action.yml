@@ -62,9 +62,9 @@ inputs:
     required: false
     default: ''
   validate_injections:
-    description: 'Prompt injection validation mode. "both" = pattern + LLM (default), "pattern" = regex only, "llm" = LLM only, "none" = disabled'
+    description: 'Prompt injection validation mode. "pattern" = regex only (default), "both" = pattern + LLM, "llm" = LLM only, "none" = disabled'
     required: false
-    default: 'both'
+    default: 'pattern'
   validation_model:
     description: 'Optional model for injection validation LLM checks. Falls back to model if not set.'
     required: false

@@ -75,7 +75,7 @@ The action runs in two phases:
 | `dry_run` | No | `false` | Perform analysis without suggesting version |
 | `content_override` | No | - | Pre-formatted content for multi-repo analysis. See [Content Override](#content-override-multi-repo-analysis) |
 | `changelog_config` | No | - | YAML config for audiences. See [Changelog Config Schema](#changelog-config-schema) |
-| `validate_injections` | No | `both` | Prompt injection validation mode. Values: `both` (pattern + LLM), `pattern` (regex only), `llm` (LLM only), `none` (disabled) |
+| `validate_injections` | No | `pattern` | Prompt injection validation mode. Values: `pattern` (regex only), `both` (pattern + LLM), `llm` (LLM only), `none` (disabled) |
 | `validation_model` | No | `model` | Model for LLM injection validation. Falls back to `model` if not set. |
 
 ## Outputs
@@ -793,11 +793,11 @@ The action implements multi-layer defense against prompt injection attacks:
 
 **Configuration:**
 ```yaml
-# Maximum security (default)
-validate_injections: both
-
-# Fast mode - pattern detection only, no LLM validation
+# Fast mode - pattern detection only (default)
 validate_injections: pattern
+
+# Maximum security - pattern + LLM validation
+validate_injections: both
 
 # Adaptive mode - LLM validation only
 validate_injections: llm
