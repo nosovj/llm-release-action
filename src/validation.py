@@ -59,6 +59,22 @@ PLACEHOLDER_PATTERNS = [
     "EXAMPLE:",
 ]
 
+# Patterns that indicate internal/repository content leaked into customer changelogs
+INTERNAL_CONTENT_PATTERNS = [
+    # Repository references
+    r"`[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+`",  # `org/repo` format
+    r"in \w+/\w+",  # "in org/repo" format
+    r"from \w+/\w+",  # "from org/repo" format
+    # Internal infrastructure terms
+    r"\bCI/CD\b",
+    r"\bGitHub Actions\b",
+    r"\bworkflow\b",
+    r"\bmigration\s+file\b",
+    r"\bdatabase\s+schema\b",
+    r"\btable\s+column\b",
+    r"\bindex\b.*\btable\b",
+]
+
 
 def detect_language(text: str) -> str:
     """Detect the language of text.
@@ -180,12 +196,130 @@ def check_references_changes(content: str, changes: List[Change]) -> List[str]:
     return issues
 
 
+def check_empty_sections(content: str) -> List[str]:
+    """Check for empty sections in changelog.
+
+    Detects patterns like:
+    - "## Features" followed immediately by another "##"
+    - "## Features" with no content before EOF
+
+    Args:
+        content: Changelog content
+
+    Returns:
+        List of empty section issues
+    """
+    import re
+
+    issues = []
+    lines = content.strip().split("\n")
+
+    current_section = None
+    section_has_content = False
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+
+        # Is this a level-2 section header? (## but not ###)
+        is_l2_header = stripped.startswith("## ") or (stripped.startswith("##") and not stripped.startswith("###"))
+        if is_l2_header:
+            # Check if previous section was empty
+            if current_section and not section_has_content:
+                issues.append(f"Empty section detected: {current_section}")
+
+            current_section = stripped
+            section_has_content = False
+        elif stripped and current_section:
+            # Any non-empty, non-header line counts as content (including ### subsections)
+            section_has_content = True
+
+    # Check the last section
+    if current_section and not section_has_content:
+        issues.append(f"Empty section detected: {current_section}")
+
+    return issues
+
+
+def check_internal_content(content: str, preset: Optional[str] = None) -> List[str]:
+    """Check for leaked internal content in customer-facing changelogs.
+
+    Only applies to customer, marketing, and executive presets.
+
+    Args:
+        content: Changelog content
+        preset: Audience preset name
+
+    Returns:
+        List of internal content issues
+    """
+    import re
+
+    # Only check for customer-facing presets
+    customer_facing_presets = {"customer", "marketing", "executive"}
+    if preset is None or preset not in customer_facing_presets:
+        return []
+
+    issues = []
+
+    for pattern in INTERNAL_CONTENT_PATTERNS:
+        matches = re.findall(pattern, content, re.IGNORECASE)
+        if matches:
+            # Deduplicate and show first 3
+            unique_matches = list(set(m.strip() for m in matches))[:3]
+            issues.append(f"Internal content leaked: {', '.join(unique_matches)}")
+            break  # One issue is enough to flag
+
+    return issues
+
+
+def strip_empty_sections(content: str) -> str:
+    """Remove empty sections from changelog.
+
+    Args:
+        content: Changelog content
+
+    Returns:
+        Content with empty sections removed
+    """
+    lines = content.split("\n")
+    result = []
+    current_section_start = -1
+    current_section_lines = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+
+        if stripped.startswith("##"):
+            # Flush previous section if it had content
+            if current_section_start >= 0:
+                # Check if section had any non-empty content
+                section_content = [l for l in current_section_lines if l.strip() and not l.strip().startswith("##")]
+                if section_content:
+                    result.extend(current_section_lines)
+
+            current_section_start = i
+            current_section_lines = [line]
+        elif current_section_start >= 0:
+            current_section_lines.append(line)
+        else:
+            result.append(line)
+
+    # Flush last section
+    if current_section_start >= 0:
+        section_content = [l for l in current_section_lines if l.strip() and not l.strip().startswith("##")]
+        if section_content:
+            result.extend(current_section_lines)
+
+    return "\n".join(result)
+
+
 def validate_changelog(
     changelog: str,
     language: str,
     changes: List[Change],
     config: ValidationConfig,
     output_format: str = "markdown",
+    preset: Optional[str] = None,
 ) -> ValidationResult:
     """Validate a generated changelog.
 
@@ -195,6 +329,7 @@ def validate_changelog(
         changes: Actual changes from Phase 1
         config: Validation configuration
         output_format: Expected format (markdown, html, json, plain)
+        preset: Audience preset name (for internal content checks)
 
     Returns:
         ValidationResult with valid flag and issues
@@ -231,6 +366,16 @@ def validate_changelog(
         elif output_format == "html":
             structure_issues = check_html_structure(changelog)
             warnings.extend(structure_issues)
+
+    # Empty sections check
+    empty_section_issues = check_empty_sections(changelog)
+    for issue in empty_section_issues:
+        warnings.append(issue)
+
+    # Internal content check (for customer-facing presets)
+    internal_content_issues = check_internal_content(changelog, preset)
+    for issue in internal_content_issues:
+        warnings.append(issue)
 
     # Language match check
     if config.check_language_match:

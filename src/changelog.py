@@ -25,7 +25,173 @@ from models import Change, ChangeCategory, ReleaseMetadata
 from repo_url import get_commit_url, get_issue_url, get_pr_url
 from templates import CATEGORY_TO_SECTION, format_section_header
 
-# Preset descriptions for audience context
+# Audience persona prompts - put the LLM "in the shoes" of the reader
+AUDIENCE_PERSONAS: Dict[str, str] = {
+    "customer": """You are writing a changelog for CUSTOMERS - the end users of this product.
+
+PUT YOURSELF IN THEIR SHOES:
+- They use the product daily to accomplish their goals
+- They care about: "What can I do now that I couldn't before?"
+- They care about: "What problems are fixed that were affecting me?"
+- They DON'T care about: how things work internally (implementation details)
+
+THEIR PRIORITIES:
+1. New features and integrations (list each one specifically by name)
+2. Performance improvements they'll notice
+3. Bugs that were frustrating them, now fixed
+4. Changes they need to take action on (breaking changes)
+
+WHAT TO INCLUDE:
+- Name specific integrations: "AWS Bedrock Integration", "Workday Integration", "Slack Integration"
+- Name specific features: "Audit Trail", "OAuth 2.0 Support", "Smart AI Translation"
+- Performance gains: "Parallel saves for workflows with more than 15 nodes"
+- Specific bug fixes: "Fixed JSON parsing errors", "Fixed authentication flow"
+
+WHAT TO EXCLUDE:
+- Implementation details (code structure, refactoring, internal architecture)
+- Build/CI/CD pipeline changes
+- Internal repository names
+- Linting, testing framework changes
+
+HOW TO FORMAT:
+- List each feature/fix as a SEPARATE item (don't combine unrelated items)
+- Use specific names: "Added Workday GetEmployee operation" not "Added new operations"
+- Be concise but specific: one line per item with a brief description
+- Group by category: 🚀 New Features, 🔧 Fixes & Improvements, 🐛 Bug Fixes""",
+
+    "developer": """You are writing a changelog for DEVELOPERS - engineers who build on this platform.
+
+PUT YOURSELF IN THEIR SHOES:
+- They need to understand API changes to update their integrations
+- They want migration paths for breaking changes
+- They appreciate technical details and commit references
+- They need to know about deprecations ahead of time
+
+THEIR PRIORITIES:
+1. API changes and new endpoints
+2. Breaking changes with migration guides
+3. Bug fixes that affected their integrations
+4. Deprecations and their timelines
+
+WHAT TO INCLUDE:
+- Technical implementation details
+- Commit hashes and PR references
+- Code examples where helpful
+- Specific version compatibility notes
+
+HOW TO COMMUNICATE:
+- Be precise and technical
+- Include code snippets when useful
+- Reference specific methods, parameters, endpoints
+- Provide before/after examples for breaking changes""",
+
+    "executive": """You are writing a changelog for EXECUTIVES - business leaders making strategic decisions.
+
+PUT YOURSELF IN THEIR SHOES:
+- They have 30 seconds to scan this
+- They care about business impact, not technical details
+- They need to answer: "Is this release important for our roadmap?"
+- They're thinking about: customers, revenue, competitive advantage
+
+THEIR PRIORITIES:
+1. Major new features that affect product positioning
+2. Customer-requested features now delivered
+3. Security or compliance improvements
+4. Anything affecting customer satisfaction or retention
+
+WHAT TO EXCLUDE:
+- Technical implementation details
+- Internal infrastructure changes
+- Bug fixes unless customer-impacting
+- Developer tooling
+
+HOW TO COMMUNICATE:
+- Lead with impact: "Enables customers to..."
+- Quantify when possible: "50% faster", "supports 10x more users"
+- Be extremely concise - bullet points, not paragraphs
+- Frame everything in business terms""",
+
+    "marketing": """You are writing a changelog for MARKETING - teams creating promotional content.
+
+PUT YOURSELF IN THEIR SHOES:
+- They need compelling angles for announcements
+- They want quotable phrases and feature names
+- They're thinking about: how does this differentiate us?
+- They need to excite customers and prospects
+
+THEIR PRIORITIES:
+1. Exciting new features with market appeal
+2. Improvements that sound impressive
+3. Anything that addresses common customer pain points
+4. Competitive advantages
+
+WHAT TO EXCLUDE:
+- Bug fixes (not marketing material)
+- Technical details
+- Internal changes
+- Anything that sounds like maintenance
+
+HOW TO COMMUNICATE:
+- Use active, exciting language
+- Focus on benefits and outcomes
+- Make features sound compelling
+- Suggest angles and talking points""",
+
+    "security": """You are writing a changelog for SECURITY TEAMS - people assessing risk and compliance.
+
+PUT YOURSELF IN THEIR SHOES:
+- They need to assess: "Does this release affect our security posture?"
+- They're looking for: vulnerabilities patched, security improvements
+- They need to update: security documentation, compliance reports
+- They care about: CVEs, authentication, authorization, data protection
+
+THEIR PRIORITIES:
+1. Security vulnerabilities fixed (with severity)
+2. Authentication/authorization changes
+3. Data handling improvements
+4. Compliance-related updates
+
+WHAT TO INCLUDE:
+- CVE references where applicable
+- Severity levels
+- What was vulnerable and how it was fixed
+- Any required security actions
+
+HOW TO COMMUNICATE:
+- Be precise about security impact
+- Use security terminology correctly
+- Note if any action is required
+- Reference relevant standards/compliance""",
+
+    "ops": """You are writing a changelog for OPS TEAMS - people deploying and maintaining the system.
+
+PUT YOURSELF IN THEIR SHOES:
+- They need to know: "What changes when I deploy this?"
+- They're planning: rollout strategy, monitoring, rollback plans
+- They care about: configuration changes, performance, stability
+- They need to update: runbooks, monitoring, alerts
+
+THEIR PRIORITIES:
+1. Configuration changes required
+2. Performance characteristics changed
+3. New dependencies or requirements
+4. Infrastructure changes
+5. Monitoring/observability additions
+
+WHAT TO INCLUDE:
+- Deployment steps if non-standard
+- New environment variables or configs
+- Resource requirement changes
+- Known issues and workarounds
+
+HOW TO COMMUNICATE:
+- Be specific about operational impact
+- Note any required actions
+- Include relevant metrics/thresholds
+- Mention rollback considerations""",
+}
+
+# Legacy preset descriptions (kept for backward compatibility)
 PRESET_DESCRIPTIONS: Dict[str, str] = {
     "developer": (
         "Software developers who need technical details, API changes, migration guides, "
@@ -315,8 +481,9 @@ def build_changelog_prompt(
 ) -> str:
     """Build the LLM prompt for Phase 2 changelog generation.
 
-    The prompt describes the audience, lists changes, specifies formatting,
-    and requests output in the target language.
+    The prompt includes a full audience persona to put the LLM "in the shoes"
+    of the reader, lists changes, specifies formatting, and requests output
+    in the target language.
 
     Args:
         changes: Filtered list of changes to include
@@ -328,11 +495,16 @@ def build_changelog_prompt(
     Returns:
         Complete prompt string for LLM
     """
-    # Get audience description
-    audience_desc = PRESET_DESCRIPTIONS.get(
-        config.preset or "",
-        f"Users interested in {config.name} updates who need relevant changelog information."
-    )
+    # Get full audience persona (preferred) or fall back to description
+    preset_key = config.preset or ""
+    audience_persona = AUDIENCE_PERSONAS.get(preset_key)
+    if not audience_persona:
+        # Fall back to legacy description
+        audience_desc = PRESET_DESCRIPTIONS.get(
+            preset_key,
+            f"Users interested in {config.name} updates who need relevant changelog information."
+        )
+        audience_persona = f"You are writing a changelog for: {audience_desc}"
 
     # Get tone description
     tone_desc = TONE_DESCRIPTIONS.get(config.tone, TONE_DESCRIPTIONS["professional"])
@@ -372,20 +544,26 @@ def build_changelog_prompt(
 
     if config.summary_only:
         format_reqs.append("- Provide a concise summary rather than detailed bullet points")
+    else:
+        # Explicit instruction to NOT consolidate
+        format_reqs.append("- List EACH change as a SEPARATE bullet point - do NOT consolidate or merge items")
+        format_reqs.append("- Include ALL changes from the list above - do not skip or summarize multiple items into one")
 
     if config.group_related:
-        format_reqs.append("- Group related changes together under meaningful headings where appropriate")
+        format_reqs.append("- You may use sub-headings within sections to organize (e.g., 'Authentication', 'Chat Widget')")
 
     format_reqs.append(f"- Sections to include (in order): {', '.join(config.sections)}")
-    format_reqs.append("- Only include sections that have changes")
+    format_reqs.append("- NEVER include empty sections - if a section has no relevant changes, omit it entirely")
 
     format_requirements = "\n".join(format_reqs)
 
-    # Build the prompt
+    # Build the prompt with full persona
     prompt = f"""You are generating a changelog for version {version}.
 
-## Audience
-{audience_desc}
+## Audience Persona
+{audience_persona}
+
+NEVER output empty sections. If a section has no relevant changes for this audience, omit it entirely.
 
 ## Tone
 {tone_desc}
@@ -400,12 +578,13 @@ Generate ALL content in {language}. All text, including section headers, descrip
 {format_requirements}
 
 ## Instructions
-1. Generate a well-structured changelog based on the changes provided above
-2. Organize changes into the specified sections
-3. Write clear, concise descriptions appropriate for the target audience
-4. Maintain the tone specified throughout
-5. Do not add any changes that are not in the provided list
-6. Do not include empty sections
+1. Include ALL changes from the list above - do not skip any
+2. List each change as a SEPARATE item (one bullet per change, not consolidated)
+3. Rephrase titles to be user-friendly but keep them specific (e.g., "AWS SES Integration" not "Email improvements")
+4. Write a brief one-line description for each item
+5. Organize into the specified sections
+6. Maintain the tone specified throughout
+7. NEVER include empty sections - omit sections with no relevant content
 
 Generate the changelog now:"""
 

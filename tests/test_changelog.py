@@ -234,7 +234,7 @@ class TestBuildChangelogPrompt:
         assert "1.2.0" in prompt
 
     def test_includes_audience_description(self) -> None:
-        """Test that preset description is included."""
+        """Test that preset persona is included."""
         changes = [
             Change(id="1", category=ChangeCategory.FEATURE, title="Feature", description=""),
         ]
@@ -242,7 +242,9 @@ class TestBuildChangelogPrompt:
 
         prompt = build_changelog_prompt(changes, config, "en", "1.0.0")
 
-        assert PRESET_DESCRIPTIONS["developer"] in prompt
+        # Check for key phrases from the developer persona prompt
+        assert "DEVELOPERS" in prompt
+        assert "API changes" in prompt
 
     def test_includes_tone(self) -> None:
         """Test that tone description is included."""

@@ -76,6 +76,7 @@ from changelog import build_changelog_prompt, filter_changes, generate_changelog
 from config import AudienceConfig, ChangelogConfig
 from content_scanner import handle_scan_result, scan_content_override, truncate_for_context
 from input_validation import validate_inputs
+from map_reduce import determine_version_from_changes, process_large_input
 from model_config import ModelConfig
 from models import AnalysisResult, Change, ChangeStats, ReleaseMetadata
 from prompt_builder import (
@@ -87,6 +88,7 @@ from prompt_builder import (
     sanitize_message,
 )
 from repo_url import get_repository_url
+from text_splitter import needs_chunking
 from validation import ValidationConfig, generate_fallback_changelog, validate_changelog
 from version import SemanticVersion, detect_latest_tag, is_shallow_clone, parse_version
 
@@ -332,6 +334,8 @@ def run_phase1(
 ) -> AnalysisResult:
     """Run Phase 1: Semantic Analysis.
 
+    For large inputs, uses map/reduce to avoid data loss from truncation.
+
     Args:
         model: LiteLLM model string
         commits: List of commits (ignored if content_override provided)
@@ -350,7 +354,63 @@ def run_phase1(
     """
     log_group("Phase 1: Semantic Analysis")
 
-    # Build prompt
+    # Check if we need map/reduce for large content_override
+    if content_override and needs_chunking(content_override, threshold=2000):
+        print(f"Large input detected ({len(content_override)} chars), using map/reduce")
+
+        # Create LLM caller for map phase (normal max_tokens)
+        def map_llm_caller(prompt: str) -> str:
+            response, _ = call_llm_with_retry(
+                model=model,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                debug=debug,
+            )
+            return response
+
+        # Create LLM caller for reduce phase (higher max_tokens to avoid truncation)
+        def reduce_llm_caller(prompt: str) -> str:
+            response, _ = call_llm_with_retry(
+                model=model,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=8000,  # Higher limit for reduce phase
+                timeout=timeout,
+                debug=debug,
+            )
+            return response
+
+        # Process using map/reduce
+        changes = process_large_input(
+            content=content_override,
+            llm_caller=map_llm_caller,
+            reduce_llm_caller=reduce_llm_caller,
+            chunk_size=2000,
+            chunk_overlap=200,
+        )
+
+        if changes:
+            # Determine version from extracted changes
+            bump = determine_version_from_changes(changes)
+            stats = ChangeStats.from_changes(changes)
+
+            print(f"Map/reduce extracted {len(changes)} changes")
+            print(f"Bump: {bump}")
+            print(f"Stats: {stats.features} features, {stats.fixes} fixes, {stats.breaking} breaking")
+
+            log_group_end()
+            return AnalysisResult(
+                bump=bump,
+                reasoning=f"Analyzed {len(changes)} changes via map/reduce from large input",
+                changes=changes,
+                stats=stats,
+            )
+        else:
+            print("Map/reduce returned no changes, falling back to normal processing")
+
+    # Normal processing path
     if content_override:
         # Scan and potentially truncate content
         scan_result = scan_content_override(content_override)
@@ -586,6 +646,7 @@ def run_phase3(
                 changes=changes,
                 config=validation_config,
                 output_format=config.output_format,
+                preset=config.preset,
             )
 
             if result.valid:
