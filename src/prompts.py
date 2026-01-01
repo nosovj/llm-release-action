@@ -155,21 +155,19 @@ Focus on significant changes. End with: [summary] X minor changes not listed
 Write changelog following this EXACT format:
 
 ### 🚀 Features
-- OAuth: Added OAuth 2.0 authorization with new authorize endpoint
+- OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint
 - Performance: Improved query speed by 40% through index optimization
 - Audit Trail: Added activity tracking page to dashboard
 
 ### 🐛 Bug Fixes
-- Session: Fixed timeout not redirecting to login page
+- Session Handling: Fixed timeout not redirecting to login page
 - Search: Resolved special characters breaking queries
 
 FORMAT RULES:
-- Title is a SHORT LABEL (1-3 words max) - just the feature/area NAME
-- Description is the actual change detail
-- BAD: "Added YACE for enhanced security: Improved security with YACE" (title is a sentence!)
-- GOOD: "YACE: Added integration for enhanced security monitoring"
+- Title is SHORT (2-4 words) - names the feature/area, NOT a sentence
+- Description explains WHAT changed - adds NEW information, not repetition
 - BAD: "Fixed JSON Parsing Errors: Fixed JSON parsing errors" (redundant!)
-- GOOD: "JSON Parsing: Fixed errors when response contains markdown"
+- GOOD: "JSON Parsing: Fixed errors when response contains markdown blocks"
 - NO bold (**), NO multi-line entries
 {% if detail_level == "minimal" %}
 Keep concise - summarize minor changes, detail only significant ones.
@@ -240,24 +238,24 @@ Use Markdown formatting with headers (##, ###) for sections.
 ## v1.2.0
 
 ### 🚀 New Features
-- OAuth: Added OAuth 2.0 authorization with new authorize endpoint
+- OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint
 - Dark Mode: Users can now toggle between light and dark themes
 - Export API: New endpoint for bulk data export in CSV and JSON formats
 
 ### 🔧 Improvements
 - Performance: Improved query speed by 40% through index optimization
-- UI: Updated button styles and spacing across dashboard
+- UI Polish: Updated button styles and spacing across dashboard
 
 ### 🐛 Bug Fixes
-- Session: Fixed timeout not redirecting to login page
+- Session Handling: Fixed timeout not redirecting to login page
 - Search: Resolved issue where special characters broke queries
 ```
 
 FORMAT RULES:
-- Title is a SHORT LABEL (1-3 words max) - just the feature/area NAME
-- Description is the actual change detail
-- BAD: "Added OAuth Support: Added OAuth 2.0" (title is a sentence!)
-- GOOD: "OAuth: Added 2.0 authorization with new endpoint"
+- Title is SHORT (2-4 words) naming the feature/area
+- Description explains WHAT changed - must add NEW information
+- BAD: "Fixed Login Bug: Fixed login bug" (redundant!)
+- GOOD: "Login: Fixed session timeout not redirecting properly"
 - NO bold (**), NO multi-line, NO "Description:" labels
 {% elif output_format == "html" %}
 ### REQUIRED FORMAT - Follow this example EXACTLY:
@@ -267,18 +265,18 @@ FORMAT RULES:
 
 <h3>🚀 New Features</h3>
 <ul>
-<li>OAuth: Added OAuth 2.0 authorization with new authorize endpoint</li>
+<li>OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint</li>
 <li>Dark Mode: Users can now toggle between light and dark themes</li>
 </ul>
 
 <h3>🐛 Bug Fixes</h3>
 <ul>
-<li>Session: Fixed timeout not redirecting to login page</li>
+<li>Session Handling: Fixed timeout not redirecting to login page</li>
 </ul>
 ```
 
 FORMAT RULES:
-- Title is SHORT LABEL (1-3 words), description is the detail
+- Title is SHORT (2-4 words), description adds NEW information
 - Each <li> is ONE LINE, NO nested elements
 {% elif output_format == "plain" %}
 ### REQUIRED FORMAT - Follow this example EXACTLY:
@@ -287,15 +285,15 @@ FORMAT RULES:
 v1.2.0
 
 🚀 New Features
-• OAuth: Added OAuth 2.0 authorization with new authorize endpoint
+• OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint
 • Dark Mode: Users can now toggle between light and dark themes
 
 🐛 Bug Fixes
-• Session: Fixed timeout not redirecting to login page
+• Session Handling: Fixed timeout not redirecting to login page
 ```
 
 FORMAT RULES:
-- Title is SHORT LABEL (1-3 words), description is the detail
+- Title is SHORT (2-4 words), description adds NEW information
 - Each entry ONE LINE, NO multi-line
 {% endif %}
 
