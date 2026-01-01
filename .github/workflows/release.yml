@@ -55,16 +55,23 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Show results
+        env:
+          CHANGELOG: ${{ steps.changelog.outputs.content }}
+          CURRENT_VERSION: ${{ steps.current.outputs.version }}
+          NEXT_VERSION: ${{ steps.llm.outputs.next_version }}
+          BUMP_TYPE: ${{ steps.llm.outputs.bump }}
         run: |
-          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Current version:** ${{ steps.current.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Suggested version:** ${{ steps.llm.outputs.next_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Bump type:** ${{ steps.llm.outputs.bump }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Changelog" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.changelog.outputs.content }}" >> $GITHUB_STEP_SUMMARY
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## Release Summary
+
+          **Current version:** $CURRENT_VERSION
+          **Suggested version:** $NEXT_VERSION
+          **Bump type:** $BUMP_TYPE
+
+          ### Changelog
+
+          $CHANGELOG
+          EOF
 
       - name: Create GitHub Release
         if: ${{ !inputs.dry_run }}

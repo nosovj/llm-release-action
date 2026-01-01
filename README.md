@@ -398,7 +398,7 @@ Use a smarter model for analysis, faster model for changelogs:
 ```yaml
 - uses: nosovj/llm-release-action@v1
   with:
-    model: anthropic/claude-3-5-haiku-20241022
+    model: anthropic/claude-sonnet-4-5-20250929
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -718,9 +718,9 @@ The action is conservative about version bumps:
 
 Any LLM provider supported by [LiteLLM](https://docs.litellm.ai/docs/providers):
 
-- **AWS Bedrock**: `bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0`
-- **Anthropic**: `anthropic/claude-3-5-haiku-20241022`
-- **OpenAI**: `openai/gpt-4o-mini`, `openai/gpt-4o`
+- **AWS Bedrock**: `bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0`, `bedrock/us.amazon.nova-pro-v1:0`
+- **Anthropic**: `anthropic/claude-sonnet-4-5-20250929`, `anthropic/claude-haiku-4-5-20251022`
+- **OpenAI**: `openai/gpt-4o-mini`, `openai/gpt-4o`, `openai/gpt-4.1`
 - **Azure OpenAI**: `azure/<deployment-name>`
 - And many more...
 
