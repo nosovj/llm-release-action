@@ -31,16 +31,14 @@ jobs:
         id: llm
         uses: ./
         with:
-          model: bedrock/us.amazon.nova-pro-v1:0
+          model: anthropic/claude-sonnet-4-5-20250929
           current_version: ${{ steps.current.outputs.version }}
           dry_run: ${{ inputs.dry_run }}
           changelog_config: |
             developer:
               preset: developer
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: us-east-1
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Show results
         run: |
