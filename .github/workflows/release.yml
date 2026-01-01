@@ -46,8 +46,10 @@ jobs:
 
       - name: Extract changelog
         id: changelog
+        env:
+          CHANGELOGS: ${{ steps.llm.outputs.changelogs }}
         run: |
-          CHANGELOG=$(echo '${{ steps.llm.outputs.changelogs }}' | jq -r '.developer.en')
+          CHANGELOG=$(echo "$CHANGELOGS" | jq -r '.developer.en')
           echo "content<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
