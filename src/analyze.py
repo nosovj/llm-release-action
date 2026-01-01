@@ -783,6 +783,7 @@ def main() -> int:
             content_override=content_override if content_override else None,
             changelog_config=changelog_config_str if changelog_config_str else None,
             include_diffs=include_diffs,
+            validation_mode=validation_mode,
         )
 
         if not validation_result.valid:

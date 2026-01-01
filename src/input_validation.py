@@ -13,7 +13,7 @@ import regex
 import yaml
 
 from config import validate_changelog_config
-from content_scanner import scan_content_override, handle_scan_result
+from content_scanner import scan_content_override, handle_scan_result, ValidationMode
 
 
 # Maximum pattern length to reduce ReDoS attack surface
@@ -334,6 +334,7 @@ def validate_inputs(
     content_override: Optional[str] = None,
     changelog_config: Optional[str] = None,
     include_diffs: Optional[str] = None,
+    validation_mode: ValidationMode = ValidationMode.BOTH,
 ) -> InputValidationResult:
     """Validate all action inputs before processing.
 
@@ -343,6 +344,7 @@ def validate_inputs(
         content_override: Optional content override for multi-repo
         changelog_config: Optional changelog config YAML/JSON
         include_diffs: Comma-separated file patterns
+        validation_mode: Content validation mode (NONE skips injection scanning)
 
     Returns:
         InputValidationResult with valid flag and errors list
@@ -359,8 +361,8 @@ def validate_inputs(
         if not os.path.exists(".git"):
             errors.append("Not in a git repository and no content_override provided")
 
-    # Content override validation (smart scanner)
-    if content_override:
+    # Content override validation (smart scanner) - skip if validation_mode is NONE
+    if content_override and validation_mode != ValidationMode.NONE:
         scan_result = scan_content_override(content_override)
         try:
             handle_scan_result(scan_result)
