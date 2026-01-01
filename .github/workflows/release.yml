@@ -23,7 +23,11 @@ jobs:
       - name: Get current version
         id: current
         run: |
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          # Get latest semver tag (vX.Y.Z format), ignoring floating tags like v1
+          VERSION=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          if [ -z "$VERSION" ]; then
+            VERSION="v0.0.0"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Current version: $VERSION"
 
