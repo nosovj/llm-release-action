@@ -724,6 +724,23 @@ Any LLM provider supported by [LiteLLM](https://docs.litellm.ai/docs/providers):
 - **Azure OpenAI**: `azure/<deployment-name>`
 - And many more...
 
+### Model Recommendations
+
+For best changelog quality, use **Sonnet-class or equivalent models**:
+
+| Provider | Recommended Models | Notes |
+|----------|-------------------|-------|
+| AWS Bedrock | `claude-sonnet-4-5-*`, `nova-pro-v1` | Best instruction following |
+| Anthropic | `claude-sonnet-4-5-*`, `claude-sonnet-4-*` | Excellent formatting |
+| OpenAI | `gpt-4.1`, `gpt-4o` | Good quality output |
+
+**Smaller models** (Haiku 4.5, Nova Lite, GPT-4.1-mini) are faster and cheaper but may:
+- Ignore formatting instructions (e.g., use bold when asked not to)
+- Produce redundant title/description pairs
+- Miss nuanced changelog transformations
+
+**Recommendation**: Use a capable model like Sonnet 4.5 or Nova Pro for `model_changelog`, and optionally a faster model for `model_analysis` if cost is a concern.
+
 ## Evals
 
 The action includes a DeepEval test suite to verify LLM output quality:
