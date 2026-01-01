@@ -245,11 +245,43 @@ RULES:
 - NO bold (**), NO multi-line, NO "Description:" labels
 - Keep descriptions under 100 characters
 {% elif output_format == "html" %}
-Use semantic HTML: <h2>, <h3>, <ul>, <li>
-Each <li> MUST be ONE line: `<li>Feature Name: Brief description</li>`
+### REQUIRED FORMAT - Follow this example EXACTLY:
+
+```html
+<h2>v1.2.0</h2>
+
+<h3>🚀 New Features</h3>
+<ul>
+<li>OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint</li>
+<li>Dark Mode: Users can now toggle between light and dark themes</li>
+</ul>
+
+<h3>🐛 Bug Fixes</h3>
+<ul>
+<li>Login: Fixed session timeout not redirecting to login page</li>
+</ul>
+```
+
+RULES:
+- Each <li> is ONE LINE: `<li>Title: Description</li>`
+- NO nested elements, NO multi-line entries
 {% elif output_format == "plain" %}
-Plain text with clear section headers.
-Each entry ONE line: `• Feature Name: Brief description`
+### REQUIRED FORMAT - Follow this example EXACTLY:
+
+```
+v1.2.0
+
+🚀 New Features
+• OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint
+• Dark Mode: Users can now toggle between light and dark themes
+
+🐛 Bug Fixes
+• Login: Fixed session timeout not redirecting to login page
+```
+
+RULES:
+- Each entry is ONE LINE: `• Title: Description`
+- NO multi-line entries
 {% endif %}
 
 ## Guidelines
