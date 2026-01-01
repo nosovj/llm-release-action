@@ -218,16 +218,32 @@ Write ALL content in {{ language_name }}, including section headers.
 
 ## Output Format: {{ output_format }}
 {% if output_format == "markdown" %}
-Use Markdown formatting:
-{% if use_emojis %}- Include relevant emojis in section headers (🚀 Features, 🐛 Fixes, ⚠️ Breaking){% endif %}
-- Use headers (##, ###) for sections
+Use Markdown formatting with headers (##, ###) for sections.
+{% if use_emojis %}Include emojis in section headers.{% endif %}
 
-CRITICAL FORMAT RULE - Each change MUST be a SINGLE LINE:
-- Format: `- Feature Name: Brief one-sentence description`
-- Example: `- OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint`
-- Example: `- Performance: Improved query speed by 40% through index optimization`
-- NO bold titles, NO multi-line entries, NO separate description lines
-- Keep descriptions concise (under 100 characters ideally)
+### REQUIRED FORMAT - Follow this example EXACTLY:
+
+```markdown
+## v1.2.0
+
+### 🚀 New Features
+- OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint
+- Dark Mode: Users can now toggle between light and dark themes
+- Export API: New endpoint for bulk data export in CSV and JSON formats
+
+### 🔧 Improvements
+- Performance: Improved query speed by 40% through index optimization
+- UI Polish: Updated button styles and spacing across dashboard
+
+### 🐛 Bug Fixes
+- Login: Fixed session timeout not redirecting to login page
+- Search: Resolved issue where special characters broke search queries
+```
+
+RULES:
+- Each entry is ONE LINE: `- Title: Description`
+- NO bold (**), NO multi-line, NO "Description:" labels
+- Keep descriptions under 100 characters
 {% elif output_format == "html" %}
 Use semantic HTML: <h2>, <h3>, <ul>, <li>
 Each <li> MUST be ONE line: `<li>Feature Name: Brief description</li>`
