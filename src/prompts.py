@@ -230,10 +230,11 @@ Write ALL content in {{ language_name }}, including section headers.
 ## Output Format: {{ output_format }}
 {% if output_format == "markdown" %}
 Use Markdown formatting with headers (##, ###) for sections.
-{% if use_emojis %}Include emojis in section headers.{% endif %}
+{% if use_emojis %}Include emojis in section headers.{% else %}Do NOT use emojis. Use plain text headers only.{% endif %}
 
 ### REQUIRED FORMAT - Follow this example EXACTLY:
 
+{% if use_emojis %}
 ```markdown
 ## v1.2.0
 
@@ -250,6 +251,24 @@ Use Markdown formatting with headers (##, ###) for sections.
 - Session Handling: Fixed timeout not redirecting to login page
 - Search: Resolved issue where special characters broke queries
 ```
+{% else %}
+```markdown
+## v1.2.0
+
+### New Features
+- OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint
+- Dark Mode: Users can now toggle between light and dark themes
+- Export API: New endpoint for bulk data export in CSV and JSON formats
+
+### Improvements
+- Performance: Improved query speed by 40% through index optimization
+- UI Polish: Updated button styles and spacing across dashboard
+
+### Bug Fixes
+- Session Handling: Fixed timeout not redirecting to login page
+- Search: Resolved issue where special characters broke queries
+```
+{% endif %}
 
 FORMAT RULES:
 - Title is SHORT (2-4 words) naming the feature/area
@@ -260,6 +279,7 @@ FORMAT RULES:
 {% elif output_format == "html" %}
 ### REQUIRED FORMAT - Follow this example EXACTLY:
 
+{% if use_emojis %}
 ```html
 <h2>v1.2.0</h2>
 
@@ -274,6 +294,22 @@ FORMAT RULES:
 <li>Session Handling: Fixed timeout not redirecting to login page</li>
 </ul>
 ```
+{% else %}
+```html
+<h2>v1.2.0</h2>
+
+<h3>New Features</h3>
+<ul>
+<li>OAuth Support: Added OAuth 2.0 authorization with new authorize endpoint</li>
+<li>Dark Mode: Users can now toggle between light and dark themes</li>
+</ul>
+
+<h3>Bug Fixes</h3>
+<ul>
+<li>Session Handling: Fixed timeout not redirecting to login page</li>
+</ul>
+```
+{% endif %}
 
 FORMAT RULES:
 - Title is SHORT (2-4 words), description adds NEW information

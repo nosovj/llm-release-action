@@ -27,11 +27,63 @@ A GitHub Action that uses LLM to analyze commits, suggest semantic version bumps
 
 ## How It Works
 
-The action runs in two phases:
+The action runs in three phases:
 
-1. **Phase 1 - Semantic Analysis**: Analyzes commits and diffs to extract structured changes with categories, importance levels, user benefits, and technical details. Determines the appropriate version bump. For large inputs (>8000 tokens), uses map/reduce: splits content into chunks, processes in parallel, and deduplicates extracted changes.
+1. **Phase 0 - Flatten**: Analyzes changes chronologically to determine **net state**. If a feature was added then reverted, both are excluded. Related changes are consolidated into single entries.
 
-2. **Phase 2 - Changelog Generation**: Transforms the structured changes into audience-specific changelogs. Each audience/language combination runs in parallel. Applies filtering, tone, formatting, and translation.
+2. **Phase 1 - Semantic Analysis**: Analyzes the flattened changes to extract structured data with categories, importance levels, user benefits, and technical details. Determines the appropriate version bump. For large inputs (>8000 tokens), uses map/reduce: splits content into chunks, processes in parallel, deduplicates, then flattens.
+
+3. **Phase 2 - Changelog Generation**: Transforms the structured changes into audience-specific changelogs. Each audience/language combination runs in parallel. Applies filtering, tone, formatting, and translation.
+
+## Changelog Consolidation
+
+The action automatically consolidates changes to show **net state**, not history.
+
+### Why?
+
+When a feature is added and later reverted, both shouldn't appear in the changelog—that's confusing. The changelog should reflect what actually changed in this release.
+
+### How it works
+
+The action analyzes changes chronologically:
+- **Added then reverted** → excluded (net zero)
+- **Added then improved** → shows final state only
+- **Related changes** → consolidated into one entry
+
+### Example 1: Reverted feature
+
+**Input commits:**
+```
+1. feat: Add Stripe payment
+2. fix: Fix payment validation
+3. feat: Add dark mode
+4. revert: Revert Stripe payment
+```
+
+**Output changelog:**
+```markdown
+## Features
+- Dark mode support
+```
+
+Stripe doesn't appear because it was reverted—net impact is zero.
+
+### Example 2: Consolidated work
+
+**Input commits:**
+```
+1. feat: Add OAuth login
+2. fix: Fix OAuth token refresh
+3. feat: Add OAuth scope support
+```
+
+**Output changelog:**
+```markdown
+## Features
+- OAuth 2.0 authentication with token refresh and scope support
+```
+
+Related work is consolidated into a single, complete entry.
 
 ## Quick Start
 

@@ -15,6 +15,8 @@ Architecture:
         ↓ (each chunk is sanitized before embedding in prompt)
     REDUCE: reduce_changes() - deduplicate, consolidate, prioritize
         ↓
+    FLATTEN: flatten_changes() - determine net state (Phase 0)
+        ↓
     List[Change]
 """
 
@@ -24,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, List, Optional, Tuple
 
 from content_scanner import sanitize_content, validate_response
+from flatten import flatten_changes_to_list
 from models import Change, ChangeCategory, Importance
 from text_splitter import chunk_with_overlap, needs_chunking
 
@@ -328,11 +331,28 @@ def process_large_input(
     reducer = reduce_llm_caller if reduce_llm_caller else llm_caller
     reduced_changes = reduce_changes(all_changes, reducer)
 
+    if not reduced_changes:
+        return []
+
+    # Phase 0: Flatten to net state
+    # Convert reduced changes to text for flatten
+    print("Phase 0: Flattening to net state...")
+    changes_text = _changes_to_text(reduced_changes)
+    flattened_changes = flatten_changes_to_list(changes_text, reducer)
+
+    # Use flattened if we got results, otherwise fall back to reduced
+    if flattened_changes:
+        print(f"Flattened {len(reduced_changes)} changes to {len(flattened_changes)} net changes")
+        final_changes = flattened_changes
+    else:
+        print("Flatten returned empty, using reduced changes")
+        final_changes = reduced_changes
+
     # Re-assign final IDs
-    for i, change in enumerate(reduced_changes, 1):
+    for i, change in enumerate(final_changes, 1):
         change.id = f"change-{i}"
 
-    return reduced_changes
+    return final_changes
 
 
 def determine_version_from_changes(changes: List[Change]) -> str:

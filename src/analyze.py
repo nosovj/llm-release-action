@@ -84,6 +84,7 @@ from content_scanner import (
     validate_response,
     validate_with_llm,
 )
+from flatten import flatten_changes
 from input_validation import validate_inputs
 from map_reduce import determine_version_from_changes, process_large_input
 from model_config import ModelConfig
@@ -484,21 +485,84 @@ def run_phase1(
             print("LLM validation passed")
         # ValidationMode.NONE - skip all validation
 
+        # Phase 0: Flatten to net state
+        print("Phase 0: Flattening to net state...")
+
+        def flatten_llm_caller(prompt: str) -> str:
+            response, _ = call_llm_with_retry(
+                model=model,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                debug=debug,
+            )
+            return response
+
+        flattened_content = flatten_changes(content_override, flatten_llm_caller)
+        if flattened_content:
+            print(f"Flattened content ({len(flattened_content)} chars)")
+            content_override = flattened_content
+        else:
+            print("Flatten returned empty, using original content")
+
         prompt = build_semantic_analysis_prompt(
             commits=[],
             base_version=base_version,
             content_override=content_override,
         )
     else:
-        diff_patterns = [p.strip() for p in include_diffs.split(",") if p.strip()]
-        prompt = build_semantic_analysis_prompt(
-            commits=commits,
-            base_version=base_version,
-            max_commits=max_commits,
-            diff_patterns=diff_patterns,
-            base_ref=base_version,
-            head_ref=head_ref,
-        )
+        # Phase 0: Flatten commits to net state
+        if commits:
+            print("Phase 0: Flattening commits to net state...")
+
+            # Format commits as text for flatten
+            commits_text = "\n".join(
+                f"{i + 1}. {c.hash}: {c.message}"
+                for i, c in enumerate(commits)
+            )
+
+            def flatten_llm_caller(prompt: str) -> str:
+                response, _ = call_llm_with_retry(
+                    model=model,
+                    prompt=prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                    debug=debug,
+                )
+                return response
+
+            flattened_content = flatten_changes(commits_text, flatten_llm_caller)
+            if flattened_content:
+                print(f"Flattened content ({len(flattened_content)} chars)")
+                # Use flattened content instead of raw commits
+                prompt = build_semantic_analysis_prompt(
+                    commits=[],
+                    base_version=base_version,
+                    content_override=flattened_content,
+                )
+            else:
+                print("Flatten returned empty, using original commits")
+                diff_patterns = [p.strip() for p in include_diffs.split(",") if p.strip()]
+                prompt = build_semantic_analysis_prompt(
+                    commits=commits,
+                    base_version=base_version,
+                    max_commits=max_commits,
+                    diff_patterns=diff_patterns,
+                    base_ref=base_version,
+                    head_ref=head_ref,
+                )
+        else:
+            diff_patterns = [p.strip() for p in include_diffs.split(",") if p.strip()]
+            prompt = build_semantic_analysis_prompt(
+                commits=commits,
+                base_version=base_version,
+                max_commits=max_commits,
+                diff_patterns=diff_patterns,
+                base_ref=base_version,
+                head_ref=head_ref,
+            )
 
     print(f"Prompt built ({len(prompt)} chars)")
 
