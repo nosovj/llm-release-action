@@ -80,11 +80,13 @@ Look for these signals even WITHOUT explicit "BREAKING CHANGE" markers:
 - Configuration format or environment variable changes
 - Removed PUBLIC features, methods, or options that external users depend on
 
-NOT breaking (internal changes):
+NOT breaking (internal changes) - use PATCH or MINOR:
 - Refactoring internal code or dependencies
 - Removing internal/private methods or unused code
 - Optimizing internal implementations
-- Removing development dependencies
+- Removing development or build dependencies
+- Docker/infrastructure optimizations
+- Reducing image size or package dependencies
 {% endif %}
 
 ## Detail Level

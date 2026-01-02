@@ -23,6 +23,10 @@ Go through the changes chronologically and determine what ACTUALLY remains:
 3. If changes are RELATED (same feature/area) → consolidate into ONE entry
 4. REVERT commits themselves should never appear in output
 
+IMPORTANT - Version bump categories:
+- BREAKING = changes to PUBLIC APIs that external users depend on
+- NOT breaking = internal refactoring, removing internal dependencies, optimizing implementations
+
 Think step by step:
 - What was added?
 - Was it later modified? Show final state.
@@ -31,9 +35,9 @@ Think step by step:
 Input:
 {input}
 
-Output format:
+Output format - PRESERVE commit SHAs from input:
 <FLATTENED>
-[category|importance] Title | Description
+[category|importance] Title | Description | commits:sha1,sha2
 ...
 </FLATTENED>
 
