@@ -653,6 +653,12 @@ default:
         """Process a single audience/language task."""
         audience_name, language, config, filtered_changes, ver, task_base_url = task
 
+        # Guard: Skip LLM call if no changes to avoid hallucination
+        if not filtered_changes:
+            log_warning(f"No changes for audience '{audience_name}' after filtering - skipping LLM call")
+            empty_changelog = f"## {ver}\n\nNo changes in this release."
+            return audience_name, language, empty_changelog, ReleaseMetadata().to_dict()
+
         # Build prompt for this audience/language
         prompt = build_changelog_prompt(
             changes=filtered_changes,
@@ -927,6 +933,10 @@ def main() -> int:
             validation_mode=validation_mode,
             validation_model=validation_model,
         )
+
+        # Guard: Warn if Phase 1 produced no changes
+        if not analysis_result.changes:
+            log_warning("Phase 1 produced no changes - changelog will be empty")
 
         # Calculate next version
         next_version = current_version.bump(analysis_result.bump)

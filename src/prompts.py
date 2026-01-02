@@ -74,11 +74,17 @@ Be CONSERVATIVE with major bumps. When in doubt, choose the lower bump.
 
 ## Detecting Breaking Changes
 Look for these signals even WITHOUT explicit "BREAKING CHANGE" markers:
-- API endpoints removed, renamed, or changed
-- Required parameters added to existing functions/APIs
+- PUBLIC API endpoints removed, renamed, or changed
+- Required parameters added to existing PUBLIC functions/APIs
 - Database migrations that drop or rename columns
 - Configuration format or environment variable changes
-- Removed features, methods, or options
+- Removed PUBLIC features, methods, or options that external users depend on
+
+NOT breaking (internal changes):
+- Refactoring internal code or dependencies
+- Removing internal/private methods or unused code
+- Optimizing internal implementations
+- Removing development dependencies
 {% endif %}
 
 ## Detail Level

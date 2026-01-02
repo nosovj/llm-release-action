@@ -37,6 +37,8 @@ DEVELOPER: Dict[str, Any] = {
         "performance",
         "infrastructure",
         "deprecations",
+        "docs",
+        "other",
     ],
     "include_commits": True,
     "include_contributors": True,

@@ -726,3 +726,68 @@ class TestConstants:
         """Test that all categories map to sections."""
         for category in ChangeCategory:
             assert category in CATEGORY_TO_SECTION
+
+
+class TestEmptyChangesHandling:
+    """Tests to prevent hallucination when changes are filtered out."""
+
+    def test_developer_preset_includes_all_category_sections(self) -> None:
+        """Ensure developer preset includes sections for all categories.
+
+        This prevents the bug where Phase 1 categorizes changes (e.g., 'docs', 'other')
+        but Phase 2 filters them out because the preset doesn't include those sections,
+        causing the LLM to hallucinate content.
+        """
+        from presets import DEVELOPER, VALID_SECTIONS
+
+        developer_sections = set(DEVELOPER["sections"])
+
+        # Developer preset should include all valid sections
+        # since it's meant to be a "full technical changelog"
+        assert developer_sections == VALID_SECTIONS, (
+            f"Developer preset missing sections: {VALID_SECTIONS - developer_sections}"
+        )
+
+    def test_empty_changes_produces_empty_prompt_sections(self) -> None:
+        """Test that empty changes list produces empty Changes to Include section."""
+        config = AudienceConfig(name="test", preset="developer")
+
+        prompt = build_changelog_prompt(
+            changes=[],
+            config=config,
+            language="en",
+            version="v1.0.0",
+            base_url=None,
+        )
+
+        # The "Changes to Include" section should be essentially empty
+        start = prompt.find("## Changes to Include")
+        end = prompt.find("## Format Requirements")
+        changes_section = prompt[start:end].strip()
+
+        # Should only have the header, no actual changes
+        lines = [l for l in changes_section.split("\n") if l.strip() and not l.startswith("##")]
+        assert len(lines) == 0, f"Expected no changes, got: {lines}"
+
+    def test_filtered_changes_all_excluded_by_sections(self) -> None:
+        """Test that changes are filtered out if their sections aren't in preset."""
+        # Create changes with categories that map to 'docs' and 'other' sections
+        changes = [
+            Change(id="1", category=ChangeCategory.DOCUMENTATION, title="Doc change", description=""),
+            Change(id="2", category=ChangeCategory.OTHER, title="Other change", description=""),
+        ]
+
+        # Use a config that EXCLUDES docs and other sections (like old developer preset)
+        config = AudienceConfig(
+            name="test",
+            sections=["breaking", "features", "fixes"],  # Missing docs and other
+        )
+
+        # Get changes by section
+        changes_by_section = get_changes_by_section(changes, config.sections)
+
+        # Both changes should be filtered out since their sections aren't included
+        total_changes = sum(len(v) for v in changes_by_section.values())
+        assert total_changes == 0, (
+            "Changes with sections not in config should be filtered out"
+        )

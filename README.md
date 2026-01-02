@@ -478,7 +478,7 @@ Presets provide sensible defaults for common audiences:
 
 | Preset | Description | Default Sections | Tone |
 |--------|-------------|------------------|------|
-| `developer` | Full technical changelog with commits, PRs, contributors | All sections | professional |
+| `developer` | Full technical changelog with commits, PRs, contributors | All 10 sections | professional |
 | `customer` | User-facing changes with benefits focus | breaking, features, improvements, fixes | friendly |
 | `executive` | High-level business summary | breaking, features | formal |
 | `marketing` | Promotional feature announcements | features, improvements | excited |
@@ -934,6 +934,17 @@ Check that:
 - You have commits between `current_version` and `head_ref`
 - `fetch-depth: 0` is set in checkout
 - The commits have meaningful messages (not just "update" or "fix")
+
+### Changelog contains irrelevant or hallucinated content
+
+This can occur when audience filters exclude all changes, leaving an empty prompt for Phase 2. The action now guards against this by:
+- Skipping LLM calls when no changes remain after filtering
+- Returning "No changes in this release" instead
+
+If you see this issue with custom configurations:
+- Ensure your `sections` list includes sections for all expected change categories
+- The `developer` preset includes all sections by default
+- Check that `exclude_categories` isn't filtering out all your changes
 
 ## License
 
