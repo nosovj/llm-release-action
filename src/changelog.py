@@ -89,7 +89,7 @@ THEIR PRIORITIES:
 
 WHAT TO INCLUDE:
 - Technical implementation details
-- Commit hashes and PR references
+- Commit hashes and PR references (ONLY if explicitly provided in the input - never invent them)
 - Code examples where helpful
 - Specific version compatibility notes
 
@@ -592,6 +592,7 @@ Generate ALL content in {language}. All text, including section headers, descrip
 5. Organize into the specified sections
 6. Maintain the tone specified throughout
 7. NEVER include empty sections - omit sections with no relevant content
+8. NEVER invent or hallucinate commit hashes, PR numbers, or issue numbers - only include them if explicitly provided in the input above
 
 Generate the changelog now:"""
 
