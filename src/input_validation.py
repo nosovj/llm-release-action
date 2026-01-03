@@ -328,6 +328,192 @@ def validate_glob_pattern(pattern: str) -> bool:
     return True
 
 
+def validate_gitignore_pattern(pattern: str) -> List[str]:
+    """Validate a gitignore-style pattern for context_files.
+
+    Supports negation (!) and standard glob patterns.
+
+    Args:
+        pattern: Gitignore-style pattern to validate
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors = []
+
+    if not pattern:
+        return errors  # Empty pattern is valid (will be skipped)
+
+    # Strip whitespace
+    pattern = pattern.strip()
+
+    # Handle negation prefix
+    actual_pattern = pattern[1:] if pattern.startswith("!") else pattern
+
+    if not actual_pattern:
+        errors.append(f"Empty pattern after negation prefix: {pattern}")
+        return errors
+
+    # Check for invalid characters
+    if re.search(r"[<>|;`$]", actual_pattern):
+        errors.append(f"Pattern contains invalid characters: {pattern}")
+
+    # Check for path traversal attempts
+    if ".." in actual_pattern:
+        errors.append(f"Pattern contains path traversal (..): {pattern}")
+
+    # Validate pattern length
+    if len(pattern) > 500:
+        errors.append(f"Pattern too long (max 500 chars): {pattern[:50]}...")
+
+    return errors
+
+
+def validate_context_files_patterns(patterns_str: str) -> List[str]:
+    """Validate comma-separated context file patterns.
+
+    Args:
+        patterns_str: Comma-separated gitignore-style patterns
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors = []
+
+    if not patterns_str or not patterns_str.strip():
+        return errors  # Empty is valid (no context files)
+
+    patterns = [p.strip() for p in patterns_str.split(",")]
+
+    for pattern in patterns:
+        pattern_errors = validate_gitignore_pattern(pattern)
+        errors.extend(pattern_errors)
+
+    # Try to compile with pathspec to catch syntax errors
+    try:
+        import pathspec
+        pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    except ImportError:
+        # pathspec not installed yet - skip this check
+        pass
+    except Exception as e:
+        errors.append(f"Invalid pattern syntax: {e}")
+
+    return errors
+
+
+def validate_context_max_tokens(value: str) -> List[str]:
+    """Validate context_max_tokens input.
+
+    Args:
+        value: String value from action input
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors = []
+
+    if not value or not value.strip():
+        return errors  # Empty uses default
+
+    try:
+        tokens = int(value)
+        if tokens <= 0:
+            errors.append(f"context_max_tokens must be positive, got {tokens}")
+        if tokens > 100000:
+            errors.append(f"context_max_tokens too large ({tokens}), max 100000")
+    except ValueError:
+        errors.append(f"context_max_tokens must be an integer, got '{value}'")
+
+    return errors
+
+
+def validate_analyze_diffs(value: str) -> List[str]:
+    """Validate analyze_diffs input (boolean string).
+
+    Args:
+        value: String value from action input ('true' or 'false')
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors = []
+
+    if not value or not value.strip():
+        return errors  # Empty uses default
+
+    normalized = value.strip().lower()
+    if normalized not in ("true", "false"):
+        errors.append(
+            f"analyze_diffs must be 'true' or 'false', got '{value}'"
+        )
+
+    return errors
+
+
+def validate_diff_exclude_patterns(patterns: str) -> List[str]:
+    """Validate diff_exclude_patterns input (comma-separated gitignore-style patterns).
+
+    Reuses validate_context_files_patterns for consistent pattern validation.
+
+    Args:
+        patterns: Comma-separated gitignore-style patterns
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    # Reuse existing gitignore pattern validation
+    return validate_context_files_patterns(patterns)
+
+
+def validate_diff_max_files(value: str) -> List[str]:
+    """Validate diff_max_files input (non-negative integer).
+
+    Args:
+        value: String value from action input
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors = []
+
+    if not value or not value.strip():
+        return errors  # Empty uses default
+
+    try:
+        max_files = int(value)
+        if max_files < 0:
+            errors.append(f"diff_max_files must be non-negative, got {max_files}")
+    except ValueError:
+        errors.append(f"diff_max_files must be an integer, got '{value}'")
+
+    return errors
+
+
+def validate_diff_max_total_lines(value: str) -> List[str]:
+    """Validate diff_max_total_lines input (non-negative integer).
+
+    Args:
+        value: String value from action input
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors = []
+
+    if not value or not value.strip():
+        return errors  # Empty uses default
+
+    try:
+        max_lines = int(value)
+        if max_lines < 0:
+            errors.append(f"diff_max_total_lines must be non-negative, got {max_lines}")
+    except ValueError:
+        errors.append(f"diff_max_total_lines must be an integer, got '{value}'")
+
+    return errors
+
+
 def validate_inputs(
     current_version: Optional[str] = None,
     head_ref: Optional[str] = None,
@@ -335,6 +521,12 @@ def validate_inputs(
     changelog_config: Optional[str] = None,
     include_diffs: Optional[str] = None,
     validation_mode: ValidationMode = ValidationMode.BOTH,
+    context_files: Optional[str] = None,
+    context_max_tokens: Optional[str] = None,
+    analyze_diffs: Optional[str] = None,
+    diff_exclude_patterns: Optional[str] = None,
+    diff_max_files: Optional[str] = None,
+    diff_max_total_lines: Optional[str] = None,
 ) -> InputValidationResult:
     """Validate all action inputs before processing.
 
@@ -345,6 +537,12 @@ def validate_inputs(
         changelog_config: Optional changelog config YAML/JSON
         include_diffs: Comma-separated file patterns
         validation_mode: Content validation mode (NONE skips injection scanning)
+        context_files: Comma-separated gitignore-style patterns for context files
+        context_max_tokens: Maximum tokens for context content
+        analyze_diffs: Enable diff analysis ('true' or 'false')
+        diff_exclude_patterns: Comma-separated gitignore-style patterns for diff exclusion
+        diff_max_files: Maximum number of files to include in diff analysis
+        diff_max_total_lines: Maximum total lines of diff content
 
     Returns:
         InputValidationResult with valid flag and errors list
@@ -400,6 +598,27 @@ def validate_inputs(
             pattern = pattern.strip()
             if pattern and not validate_glob_pattern(pattern):
                 errors.append(f"Invalid glob pattern: {pattern}")
+
+    # context_files must be valid gitignore-style patterns
+    if context_files:
+        errors.extend(validate_context_files_patterns(context_files))
+
+    # context_max_tokens must be a positive integer
+    if context_max_tokens:
+        errors.extend(validate_context_max_tokens(context_max_tokens))
+
+    # Diff analysis parameters validation
+    if analyze_diffs:
+        errors.extend(validate_analyze_diffs(analyze_diffs))
+
+    if diff_exclude_patterns:
+        errors.extend(validate_diff_exclude_patterns(diff_exclude_patterns))
+
+    if diff_max_files:
+        errors.extend(validate_diff_max_files(diff_max_files))
+
+    if diff_max_total_lines:
+        errors.extend(validate_diff_max_total_lines(diff_max_total_lines))
 
     return InputValidationResult(valid=len(errors) == 0, errors=errors)
 

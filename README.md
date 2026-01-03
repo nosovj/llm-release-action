@@ -24,6 +24,7 @@ A GitHub Action that uses LLM to analyze commits, suggest semantic version bumps
 - **Usage Tracking**: Returns token counts and latency per model for cost monitoring
 - **Multi-repo support**: Combine changelogs from multiple repositories into a single product release
 - **Large input handling**: Automatically uses map/reduce for content exceeding token limits - chunks content, extracts changes in parallel, and deduplicates results
+- **Project Context**: Provide README, ARCHITECTURE, or other context files to help the LLM understand what's public vs internal, improving breaking change detection
 
 ## How It Works
 
@@ -129,6 +130,12 @@ Related work is consolidated into a single, complete entry.
 | `changelog_config` | No | - | YAML config for audiences. See [Changelog Config Schema](#changelog-config-schema) |
 | `validate_injections` | No | `pattern` | Prompt injection validation mode. Values: `pattern` (regex only), `both` (pattern + LLM), `llm` (LLM only), `none` (disabled) |
 | `validation_model` | No | `model` | Model for LLM injection validation. Falls back to `model` if not set. |
+| `context_files` | No | - | Comma-separated gitignore-style patterns for context files (e.g., `README.md,docs/ARCHITECTURE.md`). See [Context Files](#context-files-project-understanding). |
+| `context_max_tokens` | No | `800` | Maximum tokens for context content. Large content is summarized using map/reduce. |
+| `analyze_diffs` | No | `false` | Enable structured diff analysis to extract semantic changes from file diffs. See [Diff Analysis](#diff-analysis-structured). |
+| `diff_exclude_patterns` | No | lock/vendor/generated files | Comma-separated gitignore-style patterns to exclude from diff analysis. |
+| `diff_max_files` | No | `50` | Maximum files to analyze. Prioritizes high-signal files like API specs. |
+| `diff_max_total_lines` | No | `5000` | Maximum total diff lines to process. |
 
 ## Outputs
 
@@ -144,6 +151,7 @@ Related work is consolidated into a single, complete entry.
 | `breaking_changes` | `BreakingChange[]` | Extracted breaking changes with severity and migration steps |
 | `reasoning` | `string` | LLM explanation for the version suggestion |
 | `usage` | `{[model]: UsageStats}` | Token counts and latency per model |
+| `warnings` | `string[]` | Warnings about context staleness, summarization, etc. |
 
 See [Output Schemas](#output-schemas) below for full type definitions and examples.
 
@@ -634,6 +642,252 @@ changelog_config: |
 ```
 
 Custom patterns are merged with built-in patterns. Invalid regex patterns are silently skipped.
+
+## Context Files (Project Understanding)
+
+The `context_files` input allows you to provide project documentation that helps the LLM understand your codebase. This improves breaking change detection by distinguishing public APIs from internal code.
+
+### Why Use Context Files?
+
+Without context, the LLM must guess what's public vs internal:
+- A function removal might be flagged as breaking when it's actually internal
+- An internal refactoring might be missed when it affects undocumented public APIs
+
+With context files, you can explicitly define:
+- What APIs/endpoints are public (breaking if changed)
+- What code is internal (safe to refactor)
+- Project-specific conventions and terminology
+
+### Basic Usage
+
+```yaml
+- uses: nosovj/llm-release-action@v1
+  with:
+    model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+    context_files: README.md,docs/ARCHITECTURE.md
+```
+
+### Pattern Matching
+
+Context files support gitignore-style patterns with negation:
+
+```yaml
+# Single file
+context_files: README.md
+
+# Multiple specific files
+context_files: README.md,docs/ARCHITECTURE.md,docs/API.md
+
+# Glob patterns
+context_files: "**/README.md"
+
+# With negation (exclude specific directory)
+context_files: "**/README.md,!docs/internal/**"
+```
+
+### Default Exclusions
+
+The following directories are **automatically excluded** from context file matching to avoid picking up dependencies, build artifacts, and generated files:
+
+| Category | Excluded Directories |
+|----------|---------------------|
+| **Dependencies** | `node_modules`, `vendor`, `.pnpm`, `Pods`, `.dart_tool`, `.gradle`, `elm-stuff`, `_build`, `deps`, `.bundle`, `.cargo` |
+| **Python** | `__pycache__`, `.pytest_cache`, `.venv`, `venv`, `.tox`, `.mypy_cache`, `.ruff_cache`, `htmlcov`, `*.egg-info` |
+| **Build** | `dist`, `build`, `target`, `out` |
+| **Caches** | `.cache`, `.parcel-cache`, `.turbo` |
+| **Frameworks** | `.next`, `.nuxt`, `.output`, `.svelte-kit`, `storybook-static` |
+| **Coverage** | `coverage`, `.nyc_output` |
+| **IDE/Editor** | `.idea`, `.vscode`, `.vs` |
+| **Infra/Deploy** | `.terraform`, `.serverless`, `.vercel`, `.netlify` |
+| **Docs (generated)** | `site`, `_site`, `docs/_build` |
+| **Other** | `.git`, `logs`, `.logs`, `tmp`, `temp`, `.tmp` |
+
+You don't need to manually exclude these - they're filtered automatically. To disable default exclusions entirely, this would require code changes (not currently exposed as an input).
+
+### Token Budget
+
+Context content is limited by `context_max_tokens` (default: 800). When content exceeds this limit, it is **summarized using map/reduce** to preserve key facts while fitting the budget.
+
+```yaml
+# Increase budget for larger context
+context_files: README.md,docs/**/*.md
+context_max_tokens: 2000
+```
+
+### Example Context File
+
+Create a file like `docs/CONTEXT.md` that describes your public APIs:
+
+```markdown
+# API Context
+
+## Public APIs (breaking if changed)
+- `/api/v2/*` - All v2 endpoints are public
+- `AuthService.login()`, `AuthService.logout()` - Public auth methods
+- `UserModel` - Public user data model
+
+## Internal APIs (not breaking)
+- `/internal/*` - Internal admin endpoints
+- `_validate*` methods - Internal validation helpers
+- `*Repository` classes - Internal data access
+
+## Conventions
+- All public methods have docstrings
+- Internal methods start with underscore
+```
+
+### Staleness Warnings
+
+The action detects when changes affect areas not covered by your context files:
+
+```
+::warning::Changes detected in areas not covered by context: api, utils.
+Consider updating your context files.
+```
+
+These warnings appear in the `warnings` output and can help you keep documentation current.
+
+## Diff Analysis (Structured)
+
+The `analyze_diffs` input enables structured semantic extraction from file diffs. Instead of truncating raw diffs to fit token limits, this feature uses an LLM to extract meaningful changes from each file.
+
+### Why Use Structured Diff Analysis?
+
+**Without `analyze_diffs`** (default):
+- Raw diffs are truncated to fit token limits
+- Important changes at the end of large diffs may be lost
+- The LLM sees raw `+`/`-` lines without semantic understanding
+
+**With `analyze_diffs: true`**:
+- Each file diff is analyzed by an LLM to extract semantic changes
+- Changes are categorized (API changes, schema changes, config changes, etc.)
+- Breaking changes are explicitly flagged with migration notes
+- Results are deduplicated and consolidated
+
+### Basic Usage
+
+```yaml
+- uses: nosovj/llm-release-action@v1
+  with:
+    model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+    analyze_diffs: true
+```
+
+### Filtering with Exclude Patterns
+
+By default, low-signal files are excluded (lock files, vendor directories, generated code). You can customize this:
+
+```yaml
+- uses: nosovj/llm-release-action@v1
+  with:
+    model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+    analyze_diffs: true
+    diff_exclude_patterns: |
+      **/package-lock.json,
+      **/yarn.lock,
+      **/vendor/**,
+      **/*.generated.*,
+      **/dist/**
+```
+
+### File Prioritization
+
+When the number of changed files exceeds `diff_max_files`, files are prioritized by signal value:
+
+1. **API specs** (`openapi*.yaml`, `*.proto`, `*.graphql`) - highest priority
+2. **Database migrations** (`**/migrations/**`)
+3. **Configuration** (`*.config.*`, `Dockerfile`, CI files)
+4. **Other files** - by diff size (larger = more changes = higher priority)
+
+This ensures the most important changes are always analyzed, even in large releases.
+
+### Limits and Warnings
+
+The action enforces limits to control costs and processing time:
+
+| Limit | Default | Purpose |
+|-------|---------|---------|
+| `diff_max_files` | 50 | Maximum files to analyze |
+| `diff_max_total_lines` | 5000 | Maximum total diff lines |
+
+When limits are exceeded, the action:
+1. Prioritizes high-signal files (API specs, migrations)
+2. Emits a warning with skipped file count
+3. Continues with the prioritized subset
+
+**Warning for mass changes**: If a release touches 100+ files, consider whether this is a refactoring that should be described manually rather than analyzed file-by-file.
+
+### Example Output
+
+**Raw diff (without `analyze_diffs`):**
+```diff
+diff --git a/api/openapi.yaml b/api/openapi.yaml
+@@ -45,6 +45,12 @@ paths:
++  /users/{id}/preferences:
++    get:
++      summary: Get user preferences
++      responses:
++        '200':
++          description: User preferences
+@@ -120,8 +126,6 @@ paths:
+-  /users/{id}/settings:
+-    get:
+-      deprecated: true
+```
+
+**Structured analysis (with `analyze_diffs: true`):**
+```json
+{
+  "file": "api/openapi.yaml",
+  "changes": [
+    {
+      "type": "api_addition",
+      "description": "Added GET /users/{id}/preferences endpoint",
+      "breaking": false
+    },
+    {
+      "type": "api_removal",
+      "description": "Removed deprecated GET /users/{id}/settings endpoint",
+      "breaking": true,
+      "migration": "Use GET /users/{id}/preferences instead"
+    }
+  ]
+}
+```
+
+### Cost Considerations
+
+Enabling `analyze_diffs` adds LLM calls for the MAP phase:
+- Each file diff is sent to the LLM for analysis
+- Files are processed in parallel for speed
+- Use `diff_max_files` to control costs
+- Consider using a faster/cheaper model via `model_analysis`
+
+**Cost optimization example:**
+```yaml
+- uses: nosovj/llm-release-action@v1
+  with:
+    model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
+    model_analysis: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0  # Cheaper for diff analysis
+    analyze_diffs: true
+    diff_max_files: 30  # Limit file count
+```
+
+### Combining with Context Files
+
+Both features can be enabled together for maximum accuracy:
+
+```yaml
+- uses: nosovj/llm-release-action@v1
+  with:
+    model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+    context_files: README.md,docs/API.md
+    analyze_diffs: true
+```
+
+- **Context files** help the LLM understand what's public vs internal
+- **Diff analysis** extracts semantic changes from file diffs
+- Together, they provide the most accurate breaking change detection
 
 ## Content Override (Multi-Repo Analysis)
 

@@ -74,6 +74,8 @@ _usage = AggregateUsage()
 from analyzer import parse_phase1_response
 from changelog import build_changelog_prompt, filter_changes, generate_changelog
 from config import AudienceConfig, ChangelogConfig
+from context_loader import ContextResult, detect_staleness, load_context_files
+from diff_analyzer import DiffAnalysisResult, analyze_diffs
 from content_scanner import (
     ValidationMode,
     handle_scan_result,
@@ -343,6 +345,8 @@ def run_phase1(
     debug: bool,
     validation_mode: ValidationMode = ValidationMode.BOTH,
     validation_model: Optional[str] = None,
+    context_content: Optional[str] = None,
+    diff_analysis_content: Optional[str] = None,
 ) -> AnalysisResult:
     """Run Phase 1: Semantic Analysis.
 
@@ -363,6 +367,8 @@ def run_phase1(
         debug: Enable debug logging
         validation_mode: Injection validation mode (both, pattern, llm, none)
         validation_model: Model to use for LLM validation (defaults to model)
+        context_content: Optional project context from context files
+        diff_analysis_content: Optional structured diff analysis (replaces raw diffs when provided)
 
     Returns:
         AnalysisResult with bump, reasoning, and changes
@@ -510,6 +516,7 @@ def run_phase1(
             commits=[],
             base_version=base_version,
             content_override=content_override,
+            context_content=context_content,
         )
     else:
         # Phase 0: Flatten commits to net state
@@ -541,9 +548,41 @@ def run_phase1(
                     commits=[],
                     base_version=base_version,
                     content_override=flattened_content,
+                    context_content=context_content,
                 )
             else:
                 print("Flatten returned empty, using original commits")
+                # Use structured diff analysis if available, otherwise use raw diffs
+                if diff_analysis_content:
+                    prompt = build_semantic_analysis_prompt(
+                        commits=commits,
+                        base_version=base_version,
+                        max_commits=max_commits,
+                        diff_analysis_content=diff_analysis_content,
+                        context_content=context_content,
+                    )
+                else:
+                    diff_patterns = [p.strip() for p in include_diffs.split(",") if p.strip()]
+                    prompt = build_semantic_analysis_prompt(
+                        commits=commits,
+                        base_version=base_version,
+                        max_commits=max_commits,
+                        diff_patterns=diff_patterns,
+                        base_ref=base_version,
+                        head_ref=head_ref,
+                        context_content=context_content,
+                    )
+        else:
+            # Use structured diff analysis if available, otherwise use raw diffs
+            if diff_analysis_content:
+                prompt = build_semantic_analysis_prompt(
+                    commits=commits,
+                    base_version=base_version,
+                    max_commits=max_commits,
+                    diff_analysis_content=diff_analysis_content,
+                    context_content=context_content,
+                )
+            else:
                 diff_patterns = [p.strip() for p in include_diffs.split(",") if p.strip()]
                 prompt = build_semantic_analysis_prompt(
                     commits=commits,
@@ -552,17 +591,8 @@ def run_phase1(
                     diff_patterns=diff_patterns,
                     base_ref=base_version,
                     head_ref=head_ref,
+                    context_content=context_content,
                 )
-        else:
-            diff_patterns = [p.strip() for p in include_diffs.split(",") if p.strip()]
-            prompt = build_semantic_analysis_prompt(
-                commits=commits,
-                base_version=base_version,
-                max_commits=max_commits,
-                diff_patterns=diff_patterns,
-                base_ref=base_version,
-                head_ref=head_ref,
-            )
 
     print(f"Prompt built ({len(prompt)} chars)")
 
@@ -833,6 +863,19 @@ def main() -> int:
         content_override = os.environ.get("INPUT_CONTENT_OVERRIDE", "")
         changelog_config_str = os.environ.get("INPUT_CHANGELOG_CONFIG", "")
 
+        # Context files settings
+        context_files_patterns = os.environ.get("INPUT_CONTEXT_FILES", "")
+        context_max_tokens = get_env_int("INPUT_CONTEXT_MAX_TOKENS", 800)
+
+        # Diff analysis settings
+        analyze_diffs_enabled = get_env_bool("INPUT_ANALYZE_DIFFS", False)
+        diff_exclude_patterns = os.environ.get(
+            "INPUT_DIFF_EXCLUDE_PATTERNS",
+            "**/*.lock,**/package-lock.json,**/yarn.lock,**/pnpm-lock.yaml,**/*.min.js,**/*.min.css"
+        )
+        diff_max_files = get_env_int("INPUT_DIFF_MAX_FILES", 50)
+        diff_max_total_lines = get_env_int("INPUT_DIFF_MAX_TOTAL_LINES", 5000)
+
         # Parse injection validation settings
         validate_injections_str = os.environ.get("INPUT_VALIDATE_INJECTIONS", "pattern")
         validation_model_str = os.environ.get("INPUT_VALIDATION_MODEL", "")
@@ -854,6 +897,12 @@ def main() -> int:
             changelog_config=changelog_config_str if changelog_config_str else None,
             include_diffs=include_diffs,
             validation_mode=validation_mode,
+            context_files=context_files_patterns if context_files_patterns else None,
+            context_max_tokens=str(context_max_tokens),
+            analyze_diffs=str(analyze_diffs_enabled).lower() if analyze_diffs_enabled else None,
+            diff_exclude_patterns=diff_exclude_patterns if diff_exclude_patterns else None,
+            diff_max_files=str(diff_max_files),
+            diff_max_total_lines=str(diff_max_total_lines),
         )
 
         if not validation_result.valid:
@@ -917,6 +966,105 @@ def main() -> int:
         # Get repository URL for links
         base_url = get_repository_url()
 
+        # Initialize warnings collection
+        all_warnings: List[str] = []
+
+        # === Load Context Files ===
+        context_content: Optional[str] = None
+        context_result: Optional[ContextResult] = None
+
+        if context_files_patterns.strip():
+            log_group("Loading context files")
+
+            # Create LLM caller for context summarization (if needed)
+            def context_llm_caller(prompt: str) -> str:
+                response, _ = call_llm_with_retry(
+                    model=model_config.get_analysis_model(),
+                    prompt=prompt,
+                    temperature=0.0,  # Deterministic for summarization
+                    max_tokens=2000,
+                    timeout=timeout,
+                    debug=debug,
+                )
+                return response
+
+            context_result = load_context_files(
+                patterns=context_files_patterns,
+                max_tokens=context_max_tokens,
+                llm_caller=context_llm_caller,
+                root_dir=".",
+            )
+
+            if context_result.content:
+                context_content = context_result.content
+                print(f"Loaded context from: {', '.join(context_result.files_loaded)}")
+                if context_result.was_summarized:
+                    print("Context was summarized to fit token budget")
+            else:
+                print("No context content loaded")
+
+            # Collect warnings from context loading
+            all_warnings.extend(context_result.warnings)
+            for warning in context_result.warnings:
+                log_warning(warning)
+
+            log_group_end()
+
+        # === Diff Analysis (structured) ===
+        diff_analysis_content: Optional[str] = None
+
+        if analyze_diffs_enabled and not use_content_override:
+            log_group("Analyzing diffs (structured)")
+
+            # Get raw diff from git
+            try:
+                import subprocess
+                diff_result = subprocess.run(
+                    ["git", "diff", str(current_version), head_ref],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                raw_diff = diff_result.stdout
+
+                if raw_diff.strip():
+                    # Create LLM caller for the MAP phase
+                    def diff_llm_caller(prompt: str) -> str:
+                        response, _ = call_llm_with_retry(
+                            model=model_config.get_analysis_model(),
+                            prompt=prompt,
+                            temperature=0.0,  # Deterministic for structured extraction
+                            max_tokens=2000,
+                            timeout=timeout,
+                            debug=debug,
+                        )
+                        return response
+
+                    # Analyze diffs
+                    diff_result_obj = analyze_diffs(
+                        diff_text=raw_diff,
+                        exclude_patterns=diff_exclude_patterns,
+                        max_files=diff_max_files,
+                        max_lines=diff_max_total_lines,
+                        llm_caller=diff_llm_caller,
+                    )
+
+                    if diff_result_obj.extracted_changes:
+                        diff_analysis_content = diff_result_obj.extracted_changes
+                        print(f"Processed {diff_result_obj.diffs_processed} files, {diff_result_obj.total_lines} lines")
+
+                    # Collect warnings from diff analysis
+                    all_warnings.extend(diff_result_obj.warnings)
+                    for warning in diff_result_obj.warnings:
+                        log_warning(warning)
+                else:
+                    print("No diff content found between versions")
+
+            except subprocess.CalledProcessError as e:
+                log_warning(f"Failed to get git diff: {e.stderr}")
+
+            log_group_end()
+
         # === PHASE 1: Semantic Analysis ===
         analysis_result = run_phase1(
             model=model_config.get_analysis_model(),
@@ -932,7 +1080,30 @@ def main() -> int:
             debug=debug,
             validation_mode=validation_mode,
             validation_model=validation_model,
+            context_content=context_content,
+            diff_analysis_content=diff_analysis_content,
         )
+
+        # === Staleness Detection ===
+        if context_content and not use_content_override:
+            # Get list of changed files from git
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["git", "diff", "--name-only", str(current_version), head_ref],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                changed_files = [f.strip() for f in result.stdout.split("\n") if f.strip()]
+                if changed_files:
+                    staleness_warnings = detect_staleness(context_content, changed_files)
+                    all_warnings.extend(staleness_warnings)
+                    for warning in staleness_warnings:
+                        log_warning(warning)
+            except subprocess.CalledProcessError:
+                # Skip staleness detection if git command fails
+                pass
 
         # Guard: Warn if Phase 1 produced no changes
         if not analysis_result.changes:
@@ -1000,6 +1171,11 @@ def main() -> int:
             if c.breaking is not None
         ]
         set_output("breaking_changes", json.dumps(breaking))
+
+        # Warnings (context staleness, etc.)
+        set_output("warnings", json.dumps(all_warnings))
+        if all_warnings:
+            print(f"Warnings: {len(all_warnings)}")
 
         print(f"Current version: {current_version}")
         print(f"Next version: {next_version}")

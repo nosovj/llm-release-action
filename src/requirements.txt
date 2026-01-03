@@ -18,3 +18,9 @@ Jinja2>=3.1.0
 
 # Regex with timeout support for ReDoS protection
 regex>=2024.0.0
+
+# Gitignore-style pattern matching for context files
+pathspec>=0.12.0
+
+# Unified diff parsing for diff analysis
+unidiff>=0.7.0

@@ -104,11 +104,29 @@ This is a LARGE release ({{ commit_count }} commits). Focus on HIGH IMPACT only:
 - ONE-LINE summaries for: other features, significant fixes
 - COUNTS ONLY for: minor fixes, docs, chores, dependencies (e.g., "47 bug fixes, 23 dependency updates")
 {% endif %}
+{% if context_content %}
+
+## Project Context
+
+<PROJECT_CONTEXT>
+{{ context_content }}
+</PROJECT_CONTEXT>
+
+Use this context to:
+- Distinguish PUBLIC APIs (breaking if changed) from INTERNAL code (not breaking)
+- Apply project-specific conventions and terminology
+- Trust the context definitions over your own inference
+
+IMPORTANT: If context says something is internal, trust it - even if you might otherwise flag it as breaking.
+{% endif %}
 
 ## Input
 
 {{ input_content }}
-{% if diff_content %}
+{% if diff_analysis_content %}
+
+{{ diff_analysis_content }}
+{% elif diff_content %}
 
 ## File Diffs
 
@@ -364,10 +382,12 @@ class Phase1Config:
     input_content: str
     commit_count: int  # Used for adaptive detail level
     diff_content: Optional[str] = None
+    diff_analysis_content: Optional[str] = None  # Structured diff analysis (preferred over raw diff)
     detect_breaking: bool = True
     generate_changelog: bool = True
     include_commits: bool = True
     next_version_placeholder: str = "vX.Y.Z"
+    context_content: Optional[str] = None  # Project context from context files
 
 
 @dataclass
@@ -443,10 +463,12 @@ def render_phase1_prompt(config: Phase1Config) -> str:
         commit_count=config.commit_count,
         detail_level=detail_level,
         diff_content=config.diff_content,
+        diff_analysis_content=config.diff_analysis_content,
         detect_breaking=config.detect_breaking,
         generate_changelog=config.generate_changelog,
         include_commits=config.include_commits,
         next_version_placeholder=config.next_version_placeholder,
+        context_content=config.context_content,
     )
 
 
@@ -478,4 +500,154 @@ def render_phase2_prompt(config: Phase2Config) -> str:
         include_breaking=config.include_breaking,
         has_breaking_changes=config.has_breaking_changes,
         max_items=config.max_items,
+    )
+
+
+# =============================================================================
+# Diff MAP: Per-File Change Extraction Prompt
+# =============================================================================
+
+# File type mappings for semantic extraction hints
+FILE_TYPE_HINTS: Dict[str, str] = {
+    "openapi": "Extract endpoint changes: added/removed/modified paths, methods, parameters, response schemas",
+    "sql": "Extract schema changes: tables, columns, indexes, constraints, migrations",
+    "proto": "Extract service/message changes: services, methods, message types, fields",
+    "graphql": "Extract schema changes: types, queries, mutations, subscriptions, fields",
+    "code": "Extract API changes: functions, classes, methods, exports, public interfaces",
+}
+
+DIFF_MAP_TEMPLATE = _env.from_string("""
+Extract semantic changes from this file diff.
+
+File: {{ file_path }}
+{% if file_type_hint %}
+Focus: {{ file_type_hint }}
+{% endif %}
+
+```diff
+{{ diff_content }}
+```
+
+Output ONLY the XML below. Omit empty sections.
+
+<CHANGES>
+<ADDED>
+- item
+</ADDED>
+<REMOVED>
+- item
+</REMOVED>
+<MODIFIED>
+- item
+</MODIFIED>
+</CHANGES>
+
+Rules:
+- Describe WHAT changed semantically, not line numbers
+- Group related line changes into single logical items
+- Be concise: "Added POST /users endpoint" not "Added a new HTTP POST endpoint at the /users path"
+{% if is_binary %}
+- This is a binary file - just note "binary file changed"
+{% endif %}
+""".strip())
+
+
+@dataclass
+class DiffMapConfig:
+    """Configuration for diff MAP prompt generation."""
+
+    file_path: str
+    diff_content: str
+    file_type: Optional[str] = None  # Inferred from extension if not provided
+
+    def get_file_type(self) -> Optional[str]:
+        """Infer file type from extension if not explicitly set.
+
+        Returns:
+            File type key for FILE_TYPE_HINTS, or None if unknown
+        """
+        if self.file_type:
+            return self.file_type
+
+        path_lower = self.file_path.lower()
+
+        # OpenAPI specs
+        if any(
+            x in path_lower
+            for x in ["openapi", "swagger", "api.yaml", "api.yml", "api.json"]
+        ):
+            return "openapi"
+
+        # SQL migrations
+        if path_lower.endswith(".sql"):
+            return "sql"
+
+        # Protocol buffers
+        if path_lower.endswith(".proto"):
+            return "proto"
+
+        # GraphQL
+        if path_lower.endswith((".graphql", ".gql")):
+            return "graphql"
+
+        # Code files (general)
+        code_extensions = (
+            ".py",
+            ".js",
+            ".ts",
+            ".tsx",
+            ".jsx",
+            ".go",
+            ".rs",
+            ".java",
+            ".kt",
+            ".swift",
+            ".c",
+            ".cpp",
+            ".h",
+            ".hpp",
+            ".rb",
+            ".php",
+        )
+        if path_lower.endswith(code_extensions):
+            return "code"
+
+        return None
+
+    def is_binary(self) -> bool:
+        """Check if diff indicates a binary file.
+
+        Returns:
+            True if diff content suggests binary file
+        """
+        binary_markers = [
+            "Binary files",
+            "GIT binary patch",
+            "delta ",
+            "literal ",
+        ]
+        return any(marker in self.diff_content for marker in binary_markers)
+
+
+def render_diff_map_prompt(config: DiffMapConfig) -> str:
+    """Render the diff MAP prompt for extracting structured changes.
+
+    This prompt is designed to be concise since it runs per-file.
+    It extracts semantic changes (ADDED/REMOVED/MODIFIED) from diffs.
+
+    Args:
+        config: Diff MAP configuration
+
+    Returns:
+        Rendered prompt string
+    """
+    file_type = config.get_file_type()
+    file_type_hint = FILE_TYPE_HINTS.get(file_type) if file_type else None
+    is_binary = config.is_binary()
+
+    return DIFF_MAP_TEMPLATE.render(
+        file_path=config.file_path,
+        diff_content=config.diff_content,
+        file_type_hint=file_type_hint,
+        is_binary=is_binary,
     )

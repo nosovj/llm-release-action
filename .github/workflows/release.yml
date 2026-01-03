@@ -38,6 +38,8 @@ jobs:
           model: anthropic/claude-sonnet-4-5-20250929
           current_version: ${{ steps.current.outputs.version }}
           dry_run: ${{ inputs.dry_run }}
+          context_files: CONTEXT.md
+          context_max_tokens: 1000
           changelog_config: |
             developer:
               preset: developer

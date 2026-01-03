@@ -69,6 +69,30 @@ inputs:
     description: 'Optional model for injection validation LLM checks. Falls back to model if not set.'
     required: false
     default: ''
+  context_files:
+    description: 'Comma-separated file patterns for project context (gitignore-style, supports negation). Examples: "README.md", "README.md,docs/API.md", "**/README.md,!**/node_modules/**"'
+    required: false
+    default: ''
+  context_max_tokens:
+    description: 'Maximum tokens for context content (increase for large-context models like Claude or GPT-4)'
+    required: false
+    default: '800'
+  analyze_diffs:
+    description: 'Enable diff analysis step to extract structured changes from file diffs'
+    required: false
+    default: 'false'
+  diff_exclude_patterns:
+    description: 'Comma-separated gitignore-style patterns for files to exclude from diff analysis'
+    required: false
+    default: '**/*.lock,**/package-lock.json,**/yarn.lock,**/Cargo.lock,**/poetry.lock,**/vendor/**,**/node_modules/**,**/*.generated.*,**/generated/**,**/*.min.js,**/*.min.css'
+  diff_max_files:
+    description: 'Maximum number of files to include in diff analysis'
+    required: false
+    default: '50'
+  diff_max_total_lines:
+    description: 'Maximum total lines of diff content to analyze'
+    required: false
+    default: '5000'
 
 outputs:
   bump:
@@ -101,6 +125,9 @@ outputs:
   usage:
     description: 'JSON object with LLM usage statistics: {total_calls, total_tokens, total_latency_ms, phase1_tokens, phase2_tokens, ...}'
     value: ${{ steps.analyze.outputs.usage }}
+  warnings:
+    description: 'JSON array of warning messages (staleness, truncation, etc.)'
+    value: ${{ steps.analyze.outputs.warnings }}
 
 runs:
   using: 'composite'
@@ -135,5 +162,11 @@ runs:
         INPUT_CHANGELOG_CONFIG: ${{ inputs.changelog_config }}
         INPUT_VALIDATE_INJECTIONS: ${{ inputs.validate_injections }}
         INPUT_VALIDATION_MODEL: ${{ inputs.validation_model }}
+        INPUT_CONTEXT_FILES: ${{ inputs.context_files }}
+        INPUT_CONTEXT_MAX_TOKENS: ${{ inputs.context_max_tokens }}
+        INPUT_ANALYZE_DIFFS: ${{ inputs.analyze_diffs }}
+        INPUT_DIFF_EXCLUDE_PATTERNS: ${{ inputs.diff_exclude_patterns }}
+        INPUT_DIFF_MAX_FILES: ${{ inputs.diff_max_files }}
+        INPUT_DIFF_MAX_TOTAL_LINES: ${{ inputs.diff_max_total_lines }}
       run: |
         python ${{ github.action_path }}/src/analyze.py

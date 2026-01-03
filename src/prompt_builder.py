@@ -297,6 +297,8 @@ def build_semantic_analysis_prompt(
     detect_breaking: bool = True,
     generate_changelog: bool = True,
     include_commits: bool = True,
+    context_content: Optional[str] = None,
+    diff_analysis_content: Optional[str] = None,
 ) -> str:
     """Build prompt for semantic analysis of changes using Jinja2 templates.
 
@@ -323,6 +325,14 @@ def build_semantic_analysis_prompt(
         detect_breaking: Include breaking change detection in prompt
         generate_changelog: Include changelog generation in output
         include_commits: Include commit SHA references in output
+        context_content: Optional project context from context files (README, etc.)
+        diff_analysis_content: Optional structured diff analysis output. When provided,
+            this is used INSTEAD of raw git diff output. Expected format is a
+            pre-processed summary like:
+                ## Diff Analysis
+                ### api/openapi.yaml
+                REMOVED:
+                - DELETE /users/{id} endpoint
 
     Returns:
         Complete prompt string with XML-style delimiters
@@ -349,8 +359,15 @@ def build_semantic_analysis_prompt(
             input_content += f"\n\n... and {len(older)} additional commits"
 
     # Build optional diff section
+    # Prefer structured diff analysis over raw diff when provided
     diff_content: Optional[str] = None
-    if diff_patterns and base_ref:
+    structured_diff_analysis: Optional[str] = None
+
+    if diff_analysis_content:
+        # Use pre-processed structured diff analysis
+        structured_diff_analysis = diff_analysis_content
+    elif diff_patterns and base_ref:
+        # Fall back to raw git diff
         diff = get_file_diff(base_ref, head_ref, diff_patterns)
         if diff:
             diff_content = diff
@@ -361,9 +378,11 @@ def build_semantic_analysis_prompt(
         input_content=input_content,
         commit_count=commit_count,
         diff_content=diff_content,
+        diff_analysis_content=structured_diff_analysis,
         detect_breaking=detect_breaking,
         generate_changelog=generate_changelog,
         include_commits=include_commits,
+        context_content=context_content,
     )
 
     return render_phase1_prompt(config)
