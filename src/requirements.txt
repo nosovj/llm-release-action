@@ -1,5 +1,5 @@
 # LiteLLM for multi-provider LLM abstraction
-litellm==1.80.11
+litellm==1.80.16
 
 # AWS SDK for Bedrock support
 boto3>=1.34.0
