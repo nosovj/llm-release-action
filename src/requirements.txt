@@ -2,7 +2,7 @@
 litellm==1.80.11
 
 # AWS SDK for Bedrock support
-boto3>=1.34.0
+boto3==1.43.19    # pinned for reproducibility; 1.43.19 is the version CI resolved (backend run 26838360165). litellm already pinned at 1.80.11.
 
 # YAML/JSON config parsing
 pyyaml>=6.0
