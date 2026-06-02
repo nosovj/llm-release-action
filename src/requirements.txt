@@ -9,7 +9,7 @@ pyyaml>=6.0
 
 # Language code validation (lightweight lookup tables)
 langcodes>=3.3.0
-
+language-data>=1.4.0
 # Language detection for output validation (optional)
 langdetect>=1.0.9
 
