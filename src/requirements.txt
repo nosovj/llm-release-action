@@ -5,7 +5,7 @@ litellm==1.80.11
 boto3==1.43.19    # pinned for reproducibility; 1.43.19 is the version CI resolved (backend run 26838360165). litellm already pinned at 1.80.11.
 
 # YAML/JSON config parsing
-pyyaml>=6.0
+pyyaml>=6.0.3
 
 # Language code validation (lightweight lookup tables)
 langcodes>=3.3.0
