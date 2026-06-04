@@ -1,5 +1,5 @@
 # LiteLLM for multi-provider LLM abstraction
-litellm==1.80.11
+litellm==1.83.7
 
 # AWS SDK for Bedrock support
 boto3==1.43.19    # pinned for reproducibility; 1.43.19 is the version CI resolved (backend run 26838360165). litellm already pinned at 1.80.11.

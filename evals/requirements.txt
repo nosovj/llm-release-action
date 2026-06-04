@@ -2,7 +2,7 @@
 deepeval>=3.0.0
 
 # LLM provider
-litellm>=1.80.0
+litellm>=1.83.7
 
 # Testing
 pytest>=7.0.0
