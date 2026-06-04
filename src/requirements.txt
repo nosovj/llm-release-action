@@ -8,7 +8,7 @@ boto3==1.43.19    # pinned for reproducibility; 1.43.19 is the version CI resolv
 pyyaml>=6.0
 
 # Language code validation (lightweight lookup tables)
-langcodes>=3.3.0
+langcodes>=3.5.1
 language-data>=1.4.0
 # Language detection for output validation (optional)
 langdetect>=1.0.9
